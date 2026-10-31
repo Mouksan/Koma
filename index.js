@@ -477,6 +477,25 @@ const SEED_VERSION = 11;
 // не правили (правленые копии — уже не встроенные и остаются).
 const RETIRED_BUILTIN_IDS = ['nai-anatomy', 'nai-canon'];
 
+// Тонкая настройка NovelAI. Стандартные значения — ровно то, что было зашито раньше.
+const NAI_SAMPLERS = [
+    { id: 'k_euler_ancestral', label: 'Euler Ancestral (k_euler_ancestral)' },
+    { id: 'k_euler', label: 'Euler (k_euler)' },
+    { id: 'k_dpmpp_2s_ancestral', label: 'DPM++ 2S Ancestral (k_dpmpp_2s_ancestral)' },
+    { id: 'k_dpmpp_2m_sde', label: 'DPM++ 2M SDE (k_dpmpp_2m_sde)' },
+    { id: 'k_dpmpp_2m', label: 'DPM++ 2M (k_dpmpp_2m)' },
+    { id: 'k_dpmpp_sde', label: 'DPM++ SDE (k_dpmpp_sde)' },
+];
+// Native не даём: на V4.5 и V5 он всё равно превращается в Karras.
+const NAI_SCHEDULES = [
+    { id: 'karras', label: 'Karras' },
+    { id: 'exponential', label: 'Exponential' },
+    { id: 'polyexponential', label: 'Polyexponential' },
+];
+const NAI_FINE_DEFAULTS = Object.freeze({ sampler: 'k_euler_ancestral', schedule: 'karras', steps: 28, scale: 5, rescale: 0 });
+// Потолок шагов: больше 28 NovelAI берёт анласы даже на Opus.
+const NAI_FINE_RANGES = { steps: [1, 28], scale: [1, 10], rescale: [0, 1] };
+
 const defaultSettings = Object.freeze({
     seedVersion: SEED_VERSION,
     enabled: true,
@@ -524,6 +543,8 @@ const defaultSettings = Object.freeze({
     // Пусто — https://naistera.org
     naisteraEndpoint: '',
     negativePrompt: '',
+    // Тонкая настройка NovelAI (только напрямую). Стиль может перебить своей галочкой.
+    naiFine: { ...NAI_FINE_DEFAULTS },
     // Куски промпта с этими словами вырезаются перед отправкой в генерацию.
     stopWords: 'feral, dilated pupils, constricted pupils, crazy eyes, gold-rimmed, bloodshot',
     // Какая пропорция уходит в наистеру для каждой рамки.
@@ -1600,7 +1621,7 @@ async function runDraw(target) {
         let imageUrl = null;
         if (provider === 'novelai') {
             const result = await requestNovelAi({
-                base, chars: sections.chars, negative, model: naiModel,
+                base, chars: sections.chars, negative, model: naiModel, fine: getEffectiveFine(style),
                 width: naiSize.width, height: naiSize.height, seed,
             }, job.controller.signal);
             imageUrl = result.dataUrl;
@@ -1732,6 +1753,27 @@ const NAI_SIZES = {
     square: { width: 1024, height: 1024 },
 };
 const NAI_TIERS = ['Paper', 'Tablet', 'Scroll', 'Opus'];
+
+/** Приводит набор тонких настроек в порядок: неизвестное — к стандартному. */
+function normalizeFine(fine) {
+    const out = { ...NAI_FINE_DEFAULTS };
+    if (!fine || typeof fine !== 'object') return out;
+    if (NAI_SAMPLERS.some(x => x.id === fine.sampler)) out.sampler = fine.sampler;
+    if (NAI_SCHEDULES.some(x => x.id === fine.schedule)) out.schedule = fine.schedule;
+    for (const key of ['steps', 'scale', 'rescale']) {
+        const value = Number(fine[key]);
+        if (!Number.isFinite(value)) continue;
+        const [min, max] = NAI_FINE_RANGES[key];
+        out[key] = Math.min(max, Math.max(min, key === 'steps' ? Math.round(value) : value));
+    }
+    return out;
+}
+
+/** Что действует сейчас: свои настройки стиля (если галочка) или общие. */
+function getEffectiveFine(style) {
+    if (style?.fineOn) return normalizeFine(style.fine);
+    return normalizeFine(getSettings().naiFine);
+}
 
 // Заблокировал ли браузер прямые запросы (CORS). Помним до перезагрузки.
 let naiDirectBlocked = false;
@@ -1890,14 +1932,15 @@ function naiError(message, status) {
 }
 
 /** Прямой запрос в NovelAI с раздельными персонажами. */
-async function requestNovelAiDirect({ base, chars, negative, model, width, height, seed }, signal) {
+async function requestNovelAiDirect({ base, chars, negative, model, fine, width, height, seed }, signal) {
     const center = { x: 0.5, y: 0.5 };
+    sdwLog('INFO', 'Тонкая настройка NovelAI:', fine);
     const parameters = {
         params_version: 4,
         width, height,
-        scale: 5,
-        sampler: 'k_euler_ancestral',
-        steps: 28,
+        scale: fine.scale,
+        sampler: fine.sampler,
+        steps: fine.steps,
         seed,
         n_samples: 1,
         ucPreset: 3,
@@ -1908,8 +1951,8 @@ async function requestNovelAiDirect({ base, chars, negative, model, width, heigh
         controlnet_strength: 1,
         legacy: false,
         add_original_image: false,
-        cfg_rescale: 0,
-        noise_schedule: 'karras',
+        cfg_rescale: fine.rescale,
+        noise_schedule: fine.schedule,
         legacy_v3_extend: false,
         uncond_scale: 1,
         negative_prompt: negative,
@@ -1951,7 +1994,7 @@ async function requestNovelAiDirect({ base, chars, negative, model, width, heigh
 }
 
 /** Через прокси таверны: ключ из Подключений к API, персонажи склеиваются в строку. */
-async function requestNovelAiViaTavern({ base, chars, negative, model, width, height, seed }, signal) {
+async function requestNovelAiViaTavern({ base, chars, negative, model, fine, width, height, seed }, signal) {
     const prompt = [base, ...chars].filter(Boolean).join(', ');
     const response = await fetch('/api/novelai/generate-image', {
         method: 'POST',
@@ -1962,10 +2005,11 @@ async function requestNovelAiViaTavern({ base, chars, negative, model, width, he
             model,
             width,
             height,
-            steps: 28,
-            scale: 5,
-            sampler: 'k_euler_ancestral',
-            scheduler: 'karras',
+            // Rescale таверна не прокидывает — уходит только это.
+            steps: fine.steps,
+            scale: fine.scale,
+            sampler: fine.sampler,
+            scheduler: fine.schedule,
             seed,
         }),
         signal,
@@ -3395,6 +3439,21 @@ function buildSettingsPanel() {
                         </div>
                     </div>
 
+                    <div class="sdw-cat" id="sdw_cat_fine" ${settings.provider === 'novelai' ? '' : 'hidden'}>
+                        <button type="button" class="sdw-cat-head" aria-expanded="false">
+                            <span><i class="fa-solid fa-sliders fa-fw"></i> Тонкая настройка NovelAI</span>
+                            <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
+                        </button>
+                        <div class="sdw-cat-body" hidden>
+                    <div class="sdw-hint sdw-cat-note">Наистера эти настройки не принимает — только NovelAI напрямую. Стиль со своей галочкой перебивает их.</div>
+                    <div id="sdw_fine_fields">${fineFieldsHtml(settings.naiFine)}</div>
+                    <div class="menu_button menu_button_icon" id="sdw_fine_reset" style="margin-top: 10px;">
+                        <i class="fa-solid fa-rotate-left"></i>
+                        <span>Сбросить к стандартным</span>
+                    </div>
+                        </div>
+                    </div>
+
                     <div class="sdw-cat">
                         <button type="button" class="sdw-cat-head" aria-expanded="false">
                             <span><i class="fa-solid fa-bug fa-fw"></i> Отладка</span>
@@ -3509,6 +3568,7 @@ function buildSettingsPanel() {
         getSettings().provider = value;
         document.getElementById('sdw_prov_novelai').hidden = value !== 'novelai';
         document.getElementById('sdw_prov_naistera').hidden = value === 'novelai';
+        document.getElementById('sdw_cat_fine').hidden = value !== 'novelai';
         saveSettings();
         refreshNaiCharge();
     });
@@ -3585,6 +3645,16 @@ function buildSettingsPanel() {
 
     renderStylesList();
 
+    bindFineFields(document.getElementById('sdw_fine_fields'), () => getSettings().naiFine);
+    document.getElementById('sdw_fine_reset').addEventListener('click', () => {
+        getSettings().naiFine = { ...NAI_FINE_DEFAULTS };
+        saveSettings();
+        const fields = document.getElementById('sdw_fine_fields');
+        fields.innerHTML = fineFieldsHtml(getSettings().naiFine);
+        bindFineFields(fields, () => getSettings().naiFine);
+        toastr.info('Тонкая настройка сброшена к стандартной', TOAST_TITLE, { timeOut: 2000 });
+    });
+
     document.getElementById('sdw_debug').addEventListener('change', (e) => {
         getSettings().debug = !!e.target.checked;
         saveSettings();
@@ -3592,6 +3662,53 @@ function buildSettingsPanel() {
 
     setupProfileDropdown();
     refreshChatControls();
+}
+
+// ─── Тонкая настройка NovelAI ────────────────────────────────────────────
+
+/** Поля тонкой настройки. Одни и те же — в общей секции и внутри стиля. */
+function fineFieldsHtml(fine) {
+    const f = normalizeFine(fine);
+    const options = (list, current) => list.map(x => `<option value="${x.id}" ${x.id === current ? 'selected' : ''}>${x.label}</option>`).join('');
+    return `
+        <label class="sdw-label">Сэмплер</label>
+        <select class="text_pole" data-fine="sampler">${options(NAI_SAMPLERS, f.sampler)}</select>
+        <div class="sdw-hint">Euler Ancestral — мягко и разнообразно, стоит по умолчанию. DPM++ 2M SDE и DPM++ SDE — чище лайн и детали. DPM++ 2M — стабильный, почти без случайности.</div>
+
+        <label class="sdw-label">Расписание шума</label>
+        <select class="text_pole" data-fine="schedule">${options(NAI_SCHEDULES, f.schedule)}</select>
+        <div class="sdw-hint">Karras подходит почти всем сэмплерам. Exponential часто лучше для DPM++ 2M и DPM++ 2M SDE.</div>
+
+        <label class="sdw-label">Шаги</label>
+        <input type="number" class="text_pole" data-fine="steps" min="${NAI_FINE_RANGES.steps[0]}" max="${NAI_FINE_RANGES.steps[1]}" step="1" value="${f.steps}">
+        <div class="sdw-hint">До 28 — бесплатно на Opus.</div>
+
+        <label class="sdw-label">Guidance (CFG)</label>
+        <input type="number" class="text_pole" data-fine="scale" min="${NAI_FINE_RANGES.scale[0]}" max="${NAI_FINE_RANGES.scale[1]}" step="0.1" value="${f.scale}">
+        <div class="sdw-hint">Насколько строго держаться промпта. Выше — жёстче и контрастнее.</div>
+
+        <label class="sdw-label">Rescale CFG</label>
+        <input type="number" class="text_pole" data-fine="rescale" min="${NAI_FINE_RANGES.rescale[0]}" max="${NAI_FINE_RANGES.rescale[1]}" step="0.02" value="${f.rescale}">
+        <div class="sdw-hint">Гасит пересвет и пережжённые цвета на высоком CFG.</div>`;
+}
+
+/**
+ * Вешает сохранение на поля. getTarget() возвращает объект, куда писать
+ * (общие настройки или настройки стиля). Значение за пределами — подрезаем
+ * и показываем подрезанное.
+ */
+function bindFineFields(root, getTarget) {
+    for (const field of root.querySelectorAll('[data-fine]')) {
+        field.addEventListener('change', (e) => {
+            const target = getTarget();
+            if (!target) return;
+            const key = e.target.dataset.fine;
+            const next = normalizeFine({ ...normalizeFine(target), [key]: e.target.value });
+            Object.assign(target, next);
+            e.target.value = next[key];
+            saveSettings();
+        });
+    }
 }
 
 // ─── Стили ───────────────────────────────────────────────────────────────
@@ -3623,6 +3740,11 @@ function renderStylesList(openId = null) {
                 <textarea class="text_pole sdw-jb-text" data-f="tags" rows="4" spellcheck="false" placeholder="теги стиля через запятую">${escapeHtml(style.tags)}</textarea>
                 <label class="sdw-label">Негатив стиля</label>
                 <textarea class="text_pole sdw-jb-text" data-f="negative" rows="2" spellcheck="false" placeholder="пусто — берётся общий">${escapeHtml(style.negative || '')}</textarea>
+                <label class="checkbox_label sdw-section">
+                    <input type="checkbox" data-f="fineOn" ${style.fineOn ? 'checked' : ''}>
+                    <span>Свои настройки NovelAI</span>
+                </label>
+                <div class="sdw-subsection" data-fine-box ${style.fineOn ? '' : 'hidden'}>${fineFieldsHtml(style.fine || getSettings().naiFine)}</div>
             </div>
         </details>`).join('');
 
@@ -3648,6 +3770,22 @@ function renderStylesList(openId = null) {
             target.negative = String(e.target.value || '').trim();
             saveSettings();
         });
+        // Галочка «Свои настройки»: при первом включении берём текущие общие
+        // как отправную точку. Сняла — значения остаются, просто не действуют.
+        const fineBox = item.querySelector('[data-fine-box]');
+        item.querySelector('[data-f="fineOn"]').addEventListener('change', (e) => {
+            const target = style();
+            if (!target) return;
+            target.fineOn = !!e.target.checked;
+            if (target.fineOn && !target.fine) {
+                target.fine = normalizeFine(getSettings().naiFine);
+                fineBox.innerHTML = fineFieldsHtml(target.fine);
+                bindFineFields(fineBox, () => style()?.fine);
+            }
+            fineBox.hidden = !target.fineOn;
+            saveSettings();
+        });
+        bindFineFields(fineBox, () => style()?.fine);
         item.querySelector('[data-act="remove"]').addEventListener('click', () => {
             const settings = getSettings();
             settings.styles = settings.styles.filter(s => s.id !== item.dataset.id);

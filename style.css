@@ -803,3 +803,6 @@ textarea.sdw-expand-text {
     line-height: 1.6;
     padding: 10px 12px;
 }
+
+/* Тонкая настройка NovelAI */
+.sdw-cat-note { margin: 4px 0 2px; }
