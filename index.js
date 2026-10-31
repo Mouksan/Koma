@@ -3098,6 +3098,12 @@ function buildSettingsPanel() {
                         <span>Включено</span>
                     </label>
 
+                    <div class="sdw-cat">
+                        <button type="button" class="sdw-cat-head" aria-expanded="false">
+                            <span><i class="fa-solid fa-window-maximize fa-fw"></i> Окно и кнопка</span>
+                            <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
+                        </button>
+                        <div class="sdw-cat-body" hidden>
                     <label for="sdw_launcher_mode" class="sdw-label">Кнопка вызова</label>
                     <select id="sdw_launcher_mode" class="text_pole">
                         <option value="bar" ${settings.launcherMode === 'bar' ? 'selected' : ''}>В быстрых ответах</option>
@@ -3113,17 +3119,18 @@ function buildSettingsPanel() {
                         </label>
                         <div class="sdw-hint" id="sdw_auto_hint"></div>
                     </div>
+                        </div>
+                    </div>
 
+                    <div class="sdw-cat">
+                        <button type="button" class="sdw-cat-head" aria-expanded="false">
+                            <span><i class="fa-solid fa-plug fa-fw"></i> Модель для промпта</span>
+                            <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
+                        </button>
+                        <div class="sdw-cat-body" hidden>
                     <label for="sdw_profile" class="sdw-label">Профиль подключения</label>
                     <select id="sdw_profile" class="text_pole"></select>
                     <div class="sdw-hint" id="sdw_profile_hint">Пусто — используется текущее подключение таверны.</div>
-
-                    <label for="sdw_preset" class="sdw-label">Пресет шаблона</label>
-                    <select id="sdw_preset" class="text_pole"></select>
-                    <div class="menu_button menu_button_icon" id="sdw_manage_presets" style="margin-top: 6px;">
-                        <i class="fa-solid fa-sliders"></i>
-                        <span>Управление пресетами</span>
-                    </div>
 
                     <label for="sdw_max_tokens" class="sdw-label">Лимит токенов ответа</label>
                     <input type="number" id="sdw_max_tokens" class="text_pole" min="500" max="16000" step="250" value="${settings.maxTokens}">
@@ -3135,6 +3142,21 @@ function buildSettingsPanel() {
                         <option value="auto" ${settings.reasoningEffort === 'auto' ? 'selected' : ''}>На усмотрение модели</option>
                     </select>
                     <div class="sdw-hint">Работает только при выбранном профиле подключения.</div>
+                        </div>
+                    </div>
+
+                    <div class="sdw-cat">
+                        <button type="button" class="sdw-cat-head" aria-expanded="false">
+                            <span><i class="fa-solid fa-wrench fa-fw"></i> Шаблон</span>
+                            <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
+                        </button>
+                        <div class="sdw-cat-body" hidden>
+                    <label for="sdw_preset" class="sdw-label">Пресет шаблона</label>
+                    <select id="sdw_preset" class="text_pole"></select>
+                    <div class="menu_button menu_button_icon" id="sdw_manage_presets" style="margin-top: 6px;">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>Управление пресетами</span>
+                    </div>
 
                     <label class="checkbox_label sdw-section">
                         <input type="checkbox" id="sdw_prev_chars" ${settings.prevCharactersOnly ? 'checked' : ''}>
@@ -3158,9 +3180,15 @@ function buildSettingsPanel() {
                         <textarea id="sdw_jb_text" class="text_pole sdw-jb-text" rows="8" spellcheck="false">${escapeHtml(settings.jailbreakText)}</textarea>
                         <div class="sdw-hint">Макросы таверны работают.</div>
                     </div>
+                        </div>
+                    </div>
 
-                    <div class="sdw-group-title">Генерация</div>
-
+                    <div class="sdw-cat">
+                        <button type="button" class="sdw-cat-head" aria-expanded="false">
+                            <span><i class="fa-solid fa-paintbrush fa-fw"></i> Рисование</span>
+                            <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
+                        </button>
+                        <div class="sdw-cat-body" hidden>
                     <label for="sdw_provider" class="sdw-label">Провайдер</label>
                     <select id="sdw_provider" class="text_pole">
                         <option value="naistera" ${settings.provider !== 'novelai' ? 'selected' : ''}>Наистера</option>
@@ -3207,9 +3235,6 @@ function buildSettingsPanel() {
                         </div>
                     </div>
 
-                    <label for="sdw_negative" class="sdw-label">Негативный промпт</label>
-                    <textarea id="sdw_negative" class="text_pole sdw-jb-text" rows="3" spellcheck="false">${escapeHtml(settings.negativePrompt)}</textarea>
-
                     <label for="sdw_stop_words" class="sdw-label">Стоп-слова</label>
                     <textarea id="sdw_stop_words" class="text_pole sdw-jb-text" rows="2" spellcheck="false">${escapeHtml(settings.stopWords)}</textarea>
                     <div class="sdw-hint">Слова и фразы через запятую; кусок промпта, где они встречаются, вырезается перед отправкой.</div>
@@ -3224,8 +3249,18 @@ function buildSettingsPanel() {
                         <input type="checkbox" id="sdw_random_aspect" ${settings.randomAspect ? 'checked' : ''}>
                         <span>🎲 Рандомная рамка</span>
                     </label>
+                        </div>
+                    </div>
 
-                    <div class="sdw-group-title">Стили</div>
+                    <div class="sdw-cat">
+                        <button type="button" class="sdw-cat-head" aria-expanded="false">
+                            <span><i class="fa-solid fa-palette fa-fw"></i> Стили и негативы</span>
+                            <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
+                        </button>
+                        <div class="sdw-cat-body" hidden>
+                    <label for="sdw_negative" class="sdw-label">Негативный промпт</label>
+                    <textarea id="sdw_negative" class="text_pole sdw-jb-text" rows="3" spellcheck="false">${escapeHtml(settings.negativePrompt)}</textarea>
+
                     <div id="sdw_styles_list" class="sdw-styles-list"></div>
                     <div class="sdw-style-btns">
                         <div class="menu_button menu_button_icon" id="sdw_style_add">
@@ -3236,17 +3271,37 @@ function buildSettingsPanel() {
                         </div>
                     </div>
                     <input type="file" id="sdw_style_import_file" accept="application/json,.json" hidden>
+                        </div>
+                    </div>
 
+                    <div class="sdw-cat">
+                        <button type="button" class="sdw-cat-head" aria-expanded="false">
+                            <span><i class="fa-solid fa-bug fa-fw"></i> Отладка</span>
+                            <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
+                        </button>
+                        <div class="sdw-cat-body" hidden>
                     <label class="checkbox_label sdw-section">
                         <input type="checkbox" id="sdw_debug" ${settings.debug ? 'checked' : ''}>
                         <span>Подробные логи в консоль</span>
                     </label>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>`;
 
     container.insertAdjacentHTML('beforeend', html);
     refreshPresetSelect();
+
+    // Категории сворачиваются, как в DS Comments. При открытии все свёрнуты.
+    document.getElementById('sdw_settings_root').addEventListener('click', (e) => {
+        const head = e.target.closest('.sdw-cat-head');
+        if (!head) return;
+        const expanded = head.getAttribute('aria-expanded') === 'true';
+        head.setAttribute('aria-expanded', String(!expanded));
+        const body = head.nextElementSibling;
+        if (body) body.hidden = expanded;
+    });
 
     document.getElementById('sdw_enabled').addEventListener('change', (e) => {
         getSettings().enabled = !!e.target.checked;
