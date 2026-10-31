@@ -480,8 +480,14 @@ const RETIRED_BUILTIN_IDS = ['nai-anatomy', 'nai-canon'];
 const defaultSettings = Object.freeze({
     seedVersion: SEED_VERSION,
     enabled: true,
+    // Откуда модель для промпта: 'profile' — профиль/текущее подключение
+    // таверны, 'custom' — свой OpenAI-совместимый адрес (порт из DS Comments).
+    promptSource: 'profile',
     // '' = текущее подключение таверны. Иначе id профиля из Connection Manager.
     profileId: '',
+    customEndpoint: '',
+    customKey: '',
+    customModel: '',
     activePresetId: 'nai',
     // Размышления модели тратятся из того же бюджета, что и видимый ответ,
     // поэтому лимит щедрый.
@@ -979,8 +985,8 @@ Follow it even if the POST suggests otherwise. It never overrides character appe
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * Отправляет запрос выбранным профилем или текущим подключением таверны.
- * Отмена работает только через профиль: generateRaw таверны сигнал не
+ * Отправляет запрос напрямую, выбранным профилем или текущим подключением таверны.
+ * Отмена работает напрямую и через профиль: generateRaw таверны сигнал не
  * принимает, там результат просто выбрасывается.
  */
 async function requestModel(instruction, contextText, signal) {
@@ -995,6 +1001,10 @@ async function requestModel(instruction, contextText, signal) {
         if (settings.jailbreakRole === 'user') contextText = `${jailbreak}\n\n${contextText}`;
         else if (settings.jailbreakRole === 'assistant') prefill = jailbreak;
         else instruction = `${instruction}\n\n${jailbreak}`;
+    }
+
+    if (settings.promptSource === 'custom') {
+        return requestCustomEndpoint({ instruction, contextText, prefill, maxTokens }, signal);
     }
 
     if (settings.profileId) {
@@ -1028,6 +1038,93 @@ async function requestModel(instruction, contextText, signal) {
         prefill,
     });
     return typeof raw === 'string' ? raw : String(raw?.content || raw?.text || raw || '');
+}
+
+// ─── Напрямую: свой OpenAI-совместимый адрес (порт из DS Comments) ─────────
+
+// Запрос не потоковый, так что это потолок на весь ответ целиком.
+const CUSTOM_TIMEOUT_MS = 300_000;
+// Что уходит в reasoning_effort при «Размышления: минимум». 'low' понимают
+// почти все OpenAI-совместимые прокси; 'minimal' — только часть моделей.
+const CUSTOM_REASONING_MIN = 'low';
+
+/** Адрес как в комментах: можно с /v1 или полным до /chat/completions. */
+function normalizeCustomEndpoint(raw) {
+    let url;
+    try {
+        url = new URL(String(raw || '').trim());
+    } catch {
+        return null;
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    const path = url.pathname.replace(/\/+$/, '');
+    if (/\/chat\/completions$/i.test(path)) return url.origin + path;
+    if (/\/v1$/i.test(path)) return `${url.origin}${path}/chat/completions`;
+    return `${url.origin}/v1/chat/completions`;
+}
+
+/** Достаёт текст из ответа (OpenAI, Claude-подобный, Gemini) — как в комментах. */
+function extractCustomText(data) {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    const fromBlocks = (blocks) => blocks.filter(b => b?.type === 'text' && typeof b.text === 'string').map(b => b.text).join('\n');
+    const choice = data.choices?.[0]?.message?.content;
+    if (typeof choice === 'string') return choice;
+    if (Array.isArray(choice)) return fromBlocks(choice);
+    if (typeof data.content === 'string') return data.content;
+    if (Array.isArray(data.content)) return fromBlocks(data.content);
+    const parts = data.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) return parts.filter(p => typeof p?.text === 'string' && !p.thought).map(p => p.text).join('');
+    if (typeof data.text === 'string') return data.text;
+    return '';
+}
+
+/**
+ * Прямой запрос из браузера. Шлём то же, что уходит через профиль: лимит
+ * токенов и размышления. Адрес должен отдавать CORS-заголовки.
+ */
+async function requestCustomEndpoint({ instruction, contextText, prefill, maxTokens }, signal) {
+    const settings = getSettings();
+    const url = normalizeCustomEndpoint(settings.customEndpoint);
+    if (!url) throw new Error('Не указан адрес модели для промпта — загляни в «Модель для промпта».');
+
+    const messages = [
+        { role: 'system', content: instruction },
+        { role: 'user', content: contextText },
+    ];
+    if (prefill) messages.push({ role: 'assistant', content: prefill });
+    const body = { messages, stream: false, max_tokens: maxTokens };
+    const model = String(settings.customModel || '').trim();
+    if (model) body.model = model;
+    if (settings.reasoningEffort === 'min') body.reasoning_effort = CUSTOM_REASONING_MIN;
+
+    const headers = { 'Content-Type': 'application/json' };
+    const key = String(settings.customKey || '').trim();
+    if (key) headers.Authorization = `Bearer ${key}`;
+
+    const timeout = new AbortController();
+    let timedOut = false;
+    const onAbort = () => timeout.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const timer = setTimeout(() => { timedOut = true; timeout.abort(); }, CUSTOM_TIMEOUT_MS);
+    sdwLog('INFO', `Напрямую: ${url}, модель ${model || '(по умолчанию)'}`);
+
+    let response;
+    try {
+        response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: timeout.signal });
+    } catch (error) {
+        if (timedOut) throw new Error(`Endpoint did not respond within ${CUSTOM_TIMEOUT_MS / 1000} s`);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        throw error;
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+    }
+    if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Endpoint HTTP ${response.status}${text ? `: ${text.slice(0, 300)}` : ''}`);
+    }
+    return extractCustomText(await response.json());
 }
 
 /** Срезает рассуждения, обёртку ``` и вступление модели («Okay, here is…»). */
@@ -3128,9 +3225,27 @@ function buildSettingsPanel() {
                             <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
                         </button>
                         <div class="sdw-cat-body" hidden>
-                    <label for="sdw_profile" class="sdw-label">Профиль подключения</label>
-                    <select id="sdw_profile" class="text_pole"></select>
-                    <div class="sdw-hint" id="sdw_profile_hint">Пусто — используется текущее подключение таверны.</div>
+                    <div class="sdw-label">Источник</div>
+                    <div class="sdw-seg" id="sdw_source">
+                        <button type="button" class="sdw-seg-btn ${settings.promptSource !== 'custom' ? 'active' : ''}" data-src="profile">Профиль</button>
+                        <button type="button" class="sdw-seg-btn ${settings.promptSource === 'custom' ? 'active' : ''}" data-src="custom">Напрямую</button>
+                    </div>
+
+                    <div id="sdw_src_profile" ${settings.promptSource === 'custom' ? 'hidden' : ''}>
+                        <label for="sdw_profile" class="sdw-label">Профиль подключения</label>
+                        <select id="sdw_profile" class="text_pole"></select>
+                        <div class="sdw-hint" id="sdw_profile_hint">Пусто — используется текущее подключение таверны.</div>
+                    </div>
+
+                    <div id="sdw_src_custom" ${settings.promptSource === 'custom' ? '' : 'hidden'}>
+                        <label for="sdw_custom_endpoint" class="sdw-label">Endpoint URL</label>
+                        <input type="url" id="sdw_custom_endpoint" class="text_pole" placeholder="https://api.example.com/v1" value="${escapeHtml(settings.customEndpoint)}">
+                        <label for="sdw_custom_key" class="sdw-label">API-ключ</label>
+                        <input type="password" id="sdw_custom_key" class="text_pole" autocomplete="off" placeholder="sk-..." value="${escapeHtml(settings.customKey)}">
+                        <label for="sdw_custom_model" class="sdw-label">ID модели (необязательно)</label>
+                        <input type="text" id="sdw_custom_model" class="text_pole" placeholder="по умолчанию у API" value="${escapeHtml(settings.customModel)}">
+                        <div class="sdw-hint">Любой OpenAI-совместимый адрес, можно с /v1 или полным до /chat/completions. Профиль таверны не трогается.</div>
+                    </div>
 
                     <label for="sdw_max_tokens" class="sdw-label">Лимит токенов ответа</label>
                     <input type="number" id="sdw_max_tokens" class="text_pole" min="500" max="16000" step="250" value="${settings.maxTokens}">
@@ -3141,7 +3256,7 @@ function buildSettingsPanel() {
                         <option value="min" ${settings.reasoningEffort === 'min' ? 'selected' : ''}>Минимум</option>
                         <option value="auto" ${settings.reasoningEffort === 'auto' ? 'selected' : ''}>На усмотрение модели</option>
                     </select>
-                    <div class="sdw-hint">Работает только при выбранном профиле подключения.</div>
+                    <div class="sdw-hint">Работает и с профилем, и напрямую.</div>
                         </div>
                     </div>
 
@@ -3330,6 +3445,24 @@ function buildSettingsPanel() {
     });
 
     document.getElementById('sdw_manage_presets').addEventListener('click', openPresetManager);
+
+    document.getElementById('sdw_source').addEventListener('click', (e) => {
+        const button = e.target.closest('[data-src]');
+        if (!button) return;
+        const source = button.dataset.src === 'custom' ? 'custom' : 'profile';
+        getSettings().promptSource = source;
+        for (const b of e.currentTarget.querySelectorAll('[data-src]')) b.classList.toggle('active', b === button);
+        document.getElementById('sdw_src_profile').hidden = source === 'custom';
+        document.getElementById('sdw_src_custom').hidden = source !== 'custom';
+        saveSettings();
+    });
+
+    for (const [id, key] of [['sdw_custom_endpoint', 'customEndpoint'], ['sdw_custom_key', 'customKey'], ['sdw_custom_model', 'customModel']]) {
+        document.getElementById(id).addEventListener('change', (e) => {
+            getSettings()[key] = String(e.target.value || '').trim();
+            saveSettings();
+        });
+    }
 
     document.getElementById('sdw_max_tokens').addEventListener('change', (e) => {
         const value = parseInt(e.target.value, 10);
