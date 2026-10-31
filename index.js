@@ -1556,7 +1556,9 @@ async function runDraw(target) {
     const style = getActiveStyle();
     const aspect = pickAspect(data.aspect);
     const folder = getUploadFolderName();
-    const negative = String(settings.negativePrompt || '').trim();
+    // Негатив стиля, если он заполнен, заменяет общий; пустой — идёт общий.
+    const styleNegative = String(style?.negative || '').trim();
+    const negative = styleNegative || String(settings.negativePrompt || '').trim();
 
     // Стиль и дедупликация — только к основе; разделы персонажей идут как есть.
     const rawSections = splitPromptSections(data.prompt);
@@ -1573,6 +1575,7 @@ async function runDraw(target) {
         }).filter(Boolean),
     };
     if (stopped.length) sdwLog('INFO', 'Вырезано стоп-словами:', stopped);
+    sdwLog('INFO', `Негатив (${styleNegative ? `стиль «${style.name}»` : 'общий'}):`, negative || '(пусто)');
     const base = composeFinalPrompt(sections.base, style);
     const finalPrompt = [base, ...sections.chars].join(' | ');
 
@@ -3373,8 +3376,11 @@ function buildSettingsPanel() {
                             <i class="fa-solid fa-chevron-down sdw-cat-chevron"></i>
                         </button>
                         <div class="sdw-cat-body" hidden>
-                    <label for="sdw_negative" class="sdw-label">Негативный промпт</label>
+                    <label for="sdw_negative" class="sdw-label">Общий негатив</label>
                     <textarea id="sdw_negative" class="text_pole sdw-jb-text" rows="3" spellcheck="false">${escapeHtml(settings.negativePrompt)}</textarea>
+                    <div class="sdw-hint">Идёт в картинку, если у активного стиля нет своего негатива.</div>
+
+                    <div class="sdw-label">Стили</div>
 
                     <div id="sdw_styles_list" class="sdw-styles-list"></div>
                     <div class="sdw-style-btns">
@@ -3562,7 +3568,7 @@ function buildSettingsPanel() {
     });
 
     document.getElementById('sdw_style_add').addEventListener('click', () => {
-        const style = { id: newStyleId(), name: 'Новый стиль', tags: '' };
+        const style = { id: newStyleId(), name: 'Новый стиль', tags: '', negative: '' };
         getSettings().styles.push(style);
         saveSettings();
         renderStylesList(style.id);
@@ -3615,6 +3621,8 @@ function renderStylesList(openId = null) {
                     <button type="button" class="sdw-icon" data-act="remove" title="Удалить"><i class="fa-solid fa-trash"></i></button>
                 </div>
                 <textarea class="text_pole sdw-jb-text" data-f="tags" rows="4" spellcheck="false" placeholder="теги стиля через запятую">${escapeHtml(style.tags)}</textarea>
+                <label class="sdw-label">Негатив стиля</label>
+                <textarea class="text_pole sdw-jb-text" data-f="negative" rows="2" spellcheck="false" placeholder="пусто — берётся общий">${escapeHtml(style.negative || '')}</textarea>
             </div>
         </details>`).join('');
 
@@ -3632,6 +3640,12 @@ function renderStylesList(openId = null) {
             const target = style();
             if (!target) return;
             target.tags = String(e.target.value || '').trim();
+            saveSettings();
+        });
+        item.querySelector('[data-f="negative"]').addEventListener('change', (e) => {
+            const target = style();
+            if (!target) return;
+            target.negative = String(e.target.value || '').trim();
             saveSettings();
         });
         item.querySelector('[data-act="remove"]').addEventListener('click', () => {
@@ -3698,7 +3712,7 @@ async function importStylesFromFile(file) {
         const picked = [...overlay.querySelectorAll('input[data-i]:checked')].map(el => incoming[Number(el.dataset.i)]);
         // Импорт всегда добавляет, ничего не заменяет.
         const settings = getSettings();
-        for (const s of picked) settings.styles.push({ id: newStyleId(), name: s.name || 'Без названия', tags: s.tags });
+        for (const s of picked) settings.styles.push({ id: newStyleId(), name: s.name || 'Без названия', tags: s.tags, negative: '' });
         saveSettings();
         close();
         renderStylesList();
