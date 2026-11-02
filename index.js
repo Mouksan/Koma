@@ -470,9 +470,132 @@ Do not insert technical escape syntax into the prompt. Output no Markdown, expla
 
 Before returning, silently check: the prompt is one line using ordinary spaces; plain vertical bars appear only between the base section and character sections; there is one section per person; necessary appearance and current clothing are assigned to the correct owners; crops remain tight; panel positions and contact remain consistent; the layout is fresh, with every panel position and shape stated; the panels fill the whole page with no empty areas and the panel count matches; the chibi belongs to one named character and sits in its own small Focus frame, counted as a panel; every visible character has a scene-internal gaze target and does not look at the viewer or camera; every speaker has one matching line and "Text:" ends only that speaker's section; the output is exactly the two lines ASPECT and PROMPT.`;
 
+// «V5 — манхва»: вертикальная страница-коллаж в духе фан-эдитов манхвы.
+// Берёт у комикса только то, без чего Коме не работать (формат, разделы
+// персонажей, взгляды, action-теги, реплики) и NSFW-блок. Две версии:
+// с крупным планом снаружи и с икс-реем.
+const MANHWA_NSFW_COMMON = `- Apply this section only when the established RP moment explicitly contains sexual activity. Do not infer sexual activity merely from romance, nudity, or physical closeness.
+- Preserve the already established level of explicitness. Do not sanitize an established sexual act and do not escalate beyond what is already occurring.
+- Use direct clinical Danbooru terminology. Do not use metaphors, romantic abstractions, euphemisms, poetic phrasing, or emotional embellishment in sexual descriptions.
+- When applicable, state the exact established sexual act using standard terms: "missionary", "doggystyle", "cowgirl position", "oral", "fellatio", "cunnilingus", "anal", "vaginal", "fingering", "handjob", "penetration".
+- Specify visible anatomical state and fluids whenever already established and visible: "erect penis", "flaccid penis", "cum", "precum", "covered in cum", "sweating", "heavy breathing", "flushed face", "saliva trail".
+- Map sexual contact precisely with named participants and exact body contact. Examples of the required precision include: "penis in vagina", "penis in mouth", "penis rubbing against ass", "hand on penis". Use only the contact already established in the RP.
+- Describe clothing state mechanically and precisely for every relevant participant: "naked", "partially undressed", "clothes pulled down", "shirt lifted", "bottomless", or another directly established state.
+- Keep anatomy, clothing state, pose, penetration, and contact ownership inside the relevant named "Main frame" or "Focus frame" description.
+- Use a dedicated close-up "Focus frame" when an established sexual contact point would otherwise be too small or ambiguous.`;
+
+const MANHWA_NSFW_XRAY = `- When established sexual activity contains internal penetration that would otherwise be visually hidden, the page MUST include a localized "x-ray" "Focus frame".
+- Use "x-ray" only to clarify already established penetration. Never use it to invent hidden sexual activity.
+- Bind the "x-ray" explicitly to the named participants and the exact already established penetration.
+- Keep "x-ray" localized to the relevant "Focus frame". Do not turn the whole page into an anatomical diagram.
+- Never use "x-ray" for non-penetrative activity.`;
+
+const MANHWA_NSFW_FOCUS = `- When there is nudity or established sexual activity, the page MUST include a localized "Focus frame" showing the extreme close-ups of the explicit body parts (cock, vagina, ass hole) and the sexual act (for example, view of the penetration)`;
+
+const MANHWA_NSFW_TAIL = `- Preserve established anatomy, fluids, clothing displacement, penetration, and contact consistently between the main frame and the close-up.
+- Explicit scenes do not automatically become POV. The viewer still does not exist from the characters' perspective. Characters must not look toward the viewer, camera, or imagined audience during explicit scenes unless such behavior is explicitly established in the RP itself.
+- Chibi stickers and decorations stay cute and non-explicit even on explicit pages: they show only a reaction, never the sexual act.
+- Dialogue rules remain unchanged in explicit scenes.`;
+
+function buildManhwaInstruction(nsfwVariant) {
+    return `Create a prompt for ONE vertical manhwa page in the style of a fan-made aesthetic collage edit. Return only the two lines described in OUTPUT FORMAT. Describe the scene in English, while keeping the selected dialogue in its original Russian.
+
+OUTPUT FORMAT (strict): exactly two lines and nothing else. No roleplay text, no HTML, no markdown, no explanation.
+ASPECT: portrait
+PROMPT: the whole prompt on one line, in the structure described below.
+The page is always vertical: always write "ASPECT: portrait". Do not write portrait, landscape or square inside PROMPT.
+
+${V5_SOURCES}
+
+SOURCE AND CONTINUITY
+
+Use the latest established RP moment. Profiles define appearance; the current RP defines actions, expressions, clothing, and the current state of that clothing. Preserve everything that is still valid within scene continuity. Include ONLY characters who are actually present in the moment; never add extra people.
+
+ONE INPUT FIELD, SEPARATE CHARACTER SECTIONS
+
+Write the generated prompt on ONE line. Separate the base scene from individual character sections with a plain vertical bar "|", surrounded by spaces. Structure: base scene, page design and all panel descriptions | first character | second character. Each character section must contain that character's identity, visible appearance, current clothing, and panel-specific actions together. Use one section for each distinct visible character, including all repeat appearances and chibi stickers of that same character within the same section. Panel descriptions remain in the base section; they do not create additional character sections.
+
+Use ordinary text, punctuation, and spaces. The prompt string must contain no backslashes, line breaks, tabs, control characters, escape sequences, or technical serialization instructions. Return only the two output lines.
+
+BASE: PAGE AND ACTION
+
+Start with the gender counts for the distinct visible cast, followed by "manhwa, comic, vertical page, collage layout" and the panel count. Add a brief factual description of the setting, time of day and props mentioned in the POST. Then describe the page design and all panels in ordinary sentences. Names identify the cast here; full appearance and clothing descriptions belong in the individual character sections.
+
+PAGE DESIGN: The page background is light grid paper with a subtle paper texture, visible in the margins and gaps between panels. Panels have grey rounded panel frames with thin borders. Use 3–5 panels: ONE large "Main frame" with the key moment of the POST takes about half of the page or more; 2–4 smaller "Focus frame" panels show hands, eyes, lips, an object, a reaction, or the same moment from another angle. Vary the arrangement on every page: stacked panels, two panels side by side, a long thin horizontal strip squeezed between larger panels, an inset panel overlapping the corner of the Main frame. Keep narrow margins and gaps between panels so the grid paper and the decorations have room. For every panel, state its position, shape AND approximate size, for example "top half of the page" or "thin strip across the middle". The panel count in the base must equal the number of panels you describe. Chibi stickers are decorations, not panels.
+
+For conversation and close interaction, the "Main frame" should be a tight close-up or chest-up shot; faces and the relevant interaction fill most of the frame. Choose a specific camera for every panel (close-up, extreme close-up, upper body, from side, profile, from above, from below, from behind). Show close-ups of faces, expressions, hands, or already established physical contact. If an important action involves the lower body, use a localized detail panel for that action.
+
+Describe only what is actually visible inside the selected crop. If only the upper half of the body is visible, do not describe lower-body clothing. Background objects should remain partial and secondary. For normal conversation, avoid "full body", "long shot", and "wide shot". Do not paste these forbidden terms into the positive image prompt as a negative list.
+
+Inside every panel, state who appears, their left or right position, expression, gaze direction, and already established action. Bind physical contact to the named participants and the relevant body part. Matching detail panels must preserve the same contact and clothing state.
+
+DECORATIONS
+
+Decorations take about 15–20% of the page. Place them only in the margins, corners, gaps between panels, or slightly overlapping a panel edge. They never cover faces, speech bubbles, or the key action. Describe them in the base section.
+
+- Chibi stickers: 1–2 small chibi super deformed sticker versions of visible named characters with a white die-cut sticker outline. Each sticker belongs to ONE named character and keeps exactly that character's hair, eye color and outfit colors. It shows a cute reaction that fits the moment: blushing, flustered, sulking, sleepy, eating or holding a prop from the scene. Animal-ear chibi only if it fits that character. Every other appearance of that character keeps normal adult proportions; do not add global chibi tags to the base scene or identity descriptions.
+- Small accents: pick 3–6 that fit the mood: pixel hearts, pixel stars, sparkles, four-pointed stars, small hand-drawn doodles, sweat drops, an anger vein, tiny props from the scene as stickers, a tiny heart or emoji icon in a small bubble.
+- Sound effects: at most 1–2 per page, and only for a real action or sensation in the POST (a heartbeat, a kiss, a hit, a ring, a fall, a gasp). Write them as short English onomatopoeia in bold comic lettering with a small burst shape behind it, placed in a margin or over a gutter, for example "THUMP". If nothing in the POST makes a sound, use none.
+- No other text: no captions, labels, name tags, ID cards, magazine typography or handwritten notes.
+
+CHARACTERS IN THE SCENE
+
+Characters must behave visually as though no viewer, camera, photographer, or audience exists. They live inside the scene and must direct their attention only toward another character, an object, an event, or another meaningful point within the scene. Never describe a character as looking at the viewer, looking into the camera, facing the audience, making eye contact with the viewer, posing for the camera, acknowledging the camera, or breaking the fourth wall unless the RP explicitly establishes that exact behavior. Even when a face is shown frontally, the eyes must still be directed toward an in-scene person or object. For every visible character, give a scene-internal gaze target whenever practical. Chibi stickers may react freely.
+
+CHARACTER SECTIONS: IDENTITY AND CLOTHING
+
+After all base descriptions, append the character sections. Order them by first appearance in page reading order. Start each section with "boy", "girl", or "other" without a number, followed by the character identity. Keep that character's appearance, visible clothing, expression, and panel-specific placement or action inside THIS section. Never place several different people inside one character section. A partner's name may be used to identify an interaction, but do not import the partner's appearance or clothing into that section.
+
+For a fandom character, use the recognized character tag when confidently known and the source or series tag, followed by a compact set of identifying visual traits and CURRENT visible clothing. If the exact tag is unknown, use the full canonical name and source title in clear English rather than inventing a tag spelling.
+
+For an original character, the name is only a reference label. Explicitly describe sex or presentation, face, eyes, hair color and length, build, distinctive marks and accessories, and current visible clothing. Do not assume the model knows the name or can see profile images. Do not assign an OC a fandom character tag merely because they look similar.
+
+Keep the SAME appearance for the same character in every panel and in their chibi sticker; change the outfit only if the story says it changed. Do not borrow another character's palette, hairstyle, accessories, or clothing motifs. Express required features positively rather than listing another character's unwanted features in the positive prompt.
+
+After identity and clothing, briefly state which "Main frame" or "Focus frame" panels and which chibi sticker show that character, together with the relevant position, expression, gaze target, and action. A repeated appearance of the same character does not create another identity section.
+
+ACTION TAGS
+
+- Action Tags go inside the character sections, written literally as "source#", "target#" or "mutual#", never with names:
+  one character gets "source#hug", the other gets "target#hug" (the same action word on both sides);
+  for a shared action both get "mutual#kiss".
+- Action Tags are only for physical contact. Offering an object, gestures without touch, and gaze need no Action Tags: describe them in plain words inside the character section.
+- Who acts and who receives the action follows the POST exactly. Do not reverse roles.
+- Do not deliberate over Action Tags: if unsure, skip them and describe the interaction in one short sentence.
+
+EXPRESSIONS
+
+Facial expressions must stay readable and natural: blush, sweat drop, smirk, half-closed eyes, looking away, flustered, annoyed. Describe eyes only by color and gaze direction; never describe pupils, eye rims or eye glow. Avoid feral, crazed or distorted faces unless the POST makes that expression the point of the scene.
+
+DIALOGUE AND TEXT
+
+Use no more than three short verbatim Russian lines already spoken in the current moment, with no more than one speech bubble per speaker. Preserve profanity. Select a complete short line or a self-contained excerpt rather than inventing or paraphrasing dialogue. If no suitable short line exists, skip the text. A silent panel needs no text. Speech bubbles must not cover faces or identifying features.
+
+In the base panel description, name the visible speaker, identify the speech bubble and its tail, and place the exact printed line inside Russian guillemets: "NAME has a speech bubble saying «Реплика», with the tail pointing to NAME." Thoughts are allowed only when established internal speech exists and must use a thought bubble.
+
+At the very end of that speaker's OWN character section, add "Text:" followed by the same single line without quotation marks. Nothing else may follow it inside that character section. The next character begins after the plain vertical bar "|". Silent characters have no "Text:" entry. Do not add a global transcription or a second copy of the same bubble. Keep each dialogue line to no more than 8 words. Sound effects are not dialogue and never get a "Text:" entry.
+
+NSFW AND EXPLICIT ADULT SEXUAL CONTENT
+
+${MANHWA_NSFW_COMMON}
+${nsfwVariant}
+${MANHWA_NSFW_TAIL}
+
+EXTERNAL STYLE
+
+Do not provide artists, years, quality tags, linework or rendering instructions, or a palette. The separately configured style controls all panels. Use only brief factual lighting when relevant. Grid paper, grey rounded panel frames, chibi stickers, small accents and sound effects are page design and composition, not style.
+
+Do not insert technical escape syntax into the prompt. Output no Markdown, explanations, or placeholder labels.
+
+Before returning, silently check: ASPECT is portrait; the prompt is one line using ordinary spaces; plain vertical bars appear only between the base section and character sections; there is one section per person; only characters present in the moment appear; appearance and current clothing are assigned to the correct owners and stay the same in every panel and sticker; the page has grid paper, grey rounded frames and 3–5 panels with position, shape and size stated, and the panel count matches; chibi stickers number 1–2, each belongs to one named character, and are not counted as panels; there are at most 2 sound effects, each tied to a real action; decorations stay out of faces and the key action; every visible character has a scene-internal gaze target and does not look at the viewer or camera; every speaker has one matching line and "Text:" ends only that speaker's section; the output is exactly the two lines ASPECT and PROMPT.`;
+}
+
+const NAI_V5_MANHWA_FOCUS_INSTRUCTION = buildManhwaInstruction(MANHWA_NSFW_FOCUS);
+const NAI_V5_MANHWA_XRAY_INSTRUCTION = buildManhwaInstruction(MANHWA_NSFW_XRAY);
+
 // Версия встроенных пресетов. Растёт, когда меняется текст встроенных
 // шаблонов: у тебя настройки уже сохранены, и без этого остался бы старый текст.
-const SEED_VERSION = 11;
+const SEED_VERSION = 12;
 
 // Встроенные пресеты прошлых версий. При обновлении убираются, если их
 // не правили (правленые копии — уже не встроенные и остаются).
@@ -568,6 +691,9 @@ const defaultSettings = Object.freeze({
         { id: 'nai-v5-frame', name: 'V5 — кадр', builtIn: true, instruction: NAI_V5_FRAME_INSTRUCTION },
         { id: 'nai-v5-comic', name: 'V5 — комикс', builtIn: true, instruction: NAI_V5_COMIC_INSTRUCTION },
         { id: 'nai-v5-comic-focus', name: 'V5 — комикс (крупно)', builtIn: true, instruction: NAI_V5_COMIC_FOCUS_INSTRUCTION },
+        // lockAspect: рамка пресета, которую не перебивают ни рандом, ни «рамка по умолчанию».
+        { id: 'nai-v5-manhwa-focus', name: 'V5 — манхва (крупно)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_FOCUS_INSTRUCTION },
+        { id: 'nai-v5-manhwa-xray', name: 'V5 — манхва (икс-рей)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_XRAY_INSTRUCTION },
     ],
 });
 
@@ -1276,7 +1402,9 @@ async function runPrompt(messageId, { wish = '' } = {}) {
     const result = await writeSwipeData(target, {
         status: 'prompt',
         prompt,
-        aspect,
+        // Замок рамки пресета сильнее того, что написала модель.
+        aspect: ASPECTS.includes(preset.lockAspect) ? preset.lockAspect : aspect,
+        aspectLocked: ASPECTS.includes(preset.lockAspect),
         presetName: preset.name,
         promptAt: Date.now(),
         wish,
@@ -1434,8 +1562,10 @@ function applyStopWords(section, patterns) {
     return { text: kept.map(c => c.trim()).filter(Boolean).join(', '), removed };
 }
 
-function pickAspect(modelAspect) {
+function pickAspect(modelAspect, locked = false) {
     const settings = getSettings();
+    // Пресет с замком рамки (манхва) — рамку не трогаем.
+    if (locked && ASPECTS.includes(modelAspect)) return modelAspect;
     if (settings.randomAspect) return ASPECTS[Math.floor(Math.random() * ASPECTS.length)];
     return ASPECTS.includes(modelAspect) ? modelAspect : (settings.defaultAspect || 'landscape');
 }
@@ -1576,7 +1706,7 @@ async function runDraw(target) {
     state.drawJobs.set(target.key, job);
 
     const style = getActiveStyle();
-    const aspect = pickAspect(data.aspect);
+    const aspect = pickAspect(data.aspect, !!data.aspectLocked);
     const folder = getUploadFolderName();
     // Негатив стиля, если он заполнен, заменяет общий; пустой — идёт общий.
     const styleNegative = String(style?.negative || '').trim();
