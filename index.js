@@ -470,7 +470,8 @@ Do not insert technical escape syntax into the prompt. Output no Markdown, expla
 
 Before returning, silently check: the prompt is one line using ordinary spaces; plain vertical bars appear only between the base section and character sections; there is one section per person; necessary appearance and current clothing are assigned to the correct owners; crops remain tight; panel positions and contact remain consistent; the layout is fresh, with every panel position and shape stated; the panels fill the whole page with no empty areas and the panel count matches; the chibi belongs to one named character and sits in its own small Focus frame, counted as a panel; every visible character has a scene-internal gaze target and does not look at the viewer or camera; every speaker has one matching line and "Text:" ends only that speaker's section; the output is exactly the two lines ASPECT and PROMPT.`;
 
-// «V5 — манхва»: вертикальная страница-коллаж в духе фан-эдитов манхвы.
+// «V5 — манхва»: вертикальная страница. Две раскладки — коллаж (клетка, стикеры)
+// и классика (белая страница, ровные чёрные рамки, чиби-панель).
 // Берёт у комикса только то, без чего Коме не работать (формат, разделы
 // персонажей, взгляды, action-теги, реплики) и NSFW-блок. Две версии:
 // с крупным планом снаружи и с икс-реем.
@@ -494,11 +495,48 @@ const MANHWA_NSFW_FOCUS = `- When there is nudity or established sexual activity
 
 const MANHWA_NSFW_TAIL = `- Preserve established anatomy, fluids, clothing displacement, penetration, and contact consistently between the main frame and the close-up.
 - Explicit scenes do not automatically become POV. The viewer still does not exist from the characters' perspective. Characters must not look toward the viewer, camera, or imagined audience during explicit scenes unless such behavior is explicitly established in the RP itself.
-- Chibi stickers and decorations stay cute and non-explicit even on explicit pages: they show only a reaction, never the sexual act.
+- Chibi appearances and decorations stay cute and non-explicit even on explicit pages: they show only a reaction, never the sexual act.
 - Dialogue rules remain unchanged in explicit scenes.`;
 
-function buildManhwaInstruction(nsfwVariant) {
-    return `Create a prompt for ONE vertical manhwa page in the style of a fan-made aesthetic collage edit. Return only the two lines described in OUTPUT FORMAT. Describe the scene in English, while keeping the selected dialogue in its original Russian.
+// Две раскладки манхвы. Всё остальное (разделы, взгляды, реплики, NSFW) общее.
+const MANHWA_COLLAGE = {
+    pageKind: 'in the style of a fan-made aesthetic collage edit',
+    baseTags: 'manhwa, comic, vertical page, collage layout',
+    design: `PAGE DESIGN: The page background is light grid paper with a subtle paper texture, visible in the margins and gaps between panels. Panels have grey rounded panel frames with thin borders. Use 3–5 panels: ONE large "Main frame" with the key moment of the POST takes about half of the page or more; 2–4 smaller "Focus frame" panels show hands, eyes, lips, an object, a reaction, or the same moment from another angle. Vary the arrangement on every page: stacked panels, two panels side by side, a long thin horizontal strip squeezed between larger panels, an inset panel overlapping the corner of the Main frame. Keep narrow margins and gaps between panels so the grid paper and the decorations have room. For every panel, state its position, shape AND approximate size, for example "top half of the page" or "thin strip across the middle". The panel count in the base must equal the number of panels you describe. Chibi stickers are decorations, not panels.`,
+    extras: `DECORATIONS
+
+Decorations take about 15–20% of the page. Place them only in the margins, corners, gaps between panels, or slightly overlapping a panel edge. They never cover faces, speech bubbles, or the key action. Describe them in the base section.
+
+- Chibi stickers: 1–2 small chibi super deformed sticker versions of visible named characters with a white die-cut sticker outline. Each sticker belongs to ONE named character and keeps exactly that character's hair, eye color and outfit colors. It shows a cute reaction that fits the moment: blushing, flustered, sulking, sleepy, eating or holding a prop from the scene. Animal-ear chibi only if it fits that character. Every other appearance of that character keeps normal adult proportions; do not add global chibi tags to the base scene or identity descriptions.
+- Small accents: pick 3–6 that fit the mood: pixel hearts, pixel stars, sparkles, four-pointed stars, small hand-drawn doodles, sweat drops, an anger vein, tiny props from the scene as stickers, a tiny heart or emoji icon in a small bubble.
+- Sound effects: at most 1–2 per page, and only for a real action or sensation in the POST (a heartbeat, a kiss, a hit, a ring, a fall, a gasp). Write them as short English onomatopoeia in bold comic lettering with a small burst shape behind it, placed in a margin or over a gutter, for example "THUMP". If nothing in the POST makes a sound, use none.
+- No other text: no captions, labels, name tags, ID cards, magazine typography or handwritten notes.`,
+    chibiWord: 'chibi sticker',
+    styleNote: 'Grid paper, grey rounded panel frames, chibi stickers, small accents and sound effects are page design and composition, not style.',
+    check: 'the page has grid paper, grey rounded frames and 3–5 panels with position, shape and size stated, and the panel count matches; chibi stickers number 1–2, each belongs to one named character, and are not counted as panels; there are at most 2 sound effects, each tied to a real action; decorations stay out of faces and the key action',
+};
+
+const MANHWA_CLASSIC = {
+    pageKind: 'in the classic printed manhwa style',
+    baseTags: 'manhwa, comic, vertical page, white background',
+    design: `PAGE DESIGN: A classic manhwa page on a white page. Panels have straight edges and thin black panel borders and are separated by narrow white gutters. The panels fill the page; leave no large empty areas. Use 2–4 panels in total; a Chibi frame counts as one of them. ONE large "Main frame" carries the key moment of the POST and takes about half of the page or more; it may be borderless and bleed to the page edges. The other "Focus frame" panels show faces, eyes, lips, hands, an object or a reaction. Vary the arrangement on every page: a tall column of two stacked close-ups beside the Main frame, wide horizontal strips with an occasional slanted gutter, offset panels in a vertical webtoon rhythm, a small round inset showing an object, a character breaking out of the panel border into the gutter. For every panel, state its position, shape AND approximate size, for example "top half of the page" or "right third, two stacked panels". The panel count in the base must equal the number of panels you describe.`,
+    extras: `CHIBI
+
+Include ONE chibi moment on most pages, in one of two forms:
+- a small "Chibi frame" panel of its own, where the characters of the moment appear as chibi super deformed versions with their own simple matching surroundings (for example both walking down the same hallway, or one curled up in a blanket with a cup of tea); it counts as a panel;
+- or a tiny rounded inset in a corner of another panel with ONE chibi character reacting (blushing, flustered, sulking, sipping tea, a tiny heart or flower above the head).
+Chibi keep exactly that character's hair, eye color and outfit colors. Every other appearance keeps normal adult proportions; do not add global chibi tags to the base scene or identity descriptions.
+
+NO DECORATIONS
+
+No stickers, grid paper, rounded grey frames, pixel hearts, sparkles, doodles, sound effects, captions, labels or other text. Speech bubbles are white ovals with a tail; thoughts use cloud-shaped thought bubbles. The only text on the page is in those bubbles.`,
+    chibiWord: 'chibi appearance',
+    styleNote: 'White page, straight black panel borders and chibi moments are page design and composition, not style.',
+    check: 'the page is white with straight black-bordered panels, narrow white gutters, no large empty areas and 2–4 panels with position, shape and size stated, and the panel count matches; there is at most one chibi moment, either its own Chibi frame counted as a panel or a tiny corner inset; there are no stickers, decorations or sound effects',
+};
+
+function buildManhwaInstruction(nsfwVariant, layout = MANHWA_COLLAGE) {
+    return `Create a prompt for ONE vertical manhwa page ${layout.pageKind}. Return only the two lines described in OUTPUT FORMAT. Describe the scene in English, while keeping the selected dialogue in its original Russian.
 
 OUTPUT FORMAT (strict): exactly two lines and nothing else. No roleplay text, no HTML, no markdown, no explanation.
 ASPECT: portrait
@@ -513,15 +551,15 @@ Use the latest established RP moment. Profiles define appearance; the current RP
 
 ONE INPUT FIELD, SEPARATE CHARACTER SECTIONS
 
-Write the generated prompt on ONE line. Separate the base scene from individual character sections with a plain vertical bar "|", surrounded by spaces. Structure: base scene, page design and all panel descriptions | first character | second character. Each character section must contain that character's identity, visible appearance, current clothing, and panel-specific actions together. Use one section for each distinct visible character, including all repeat appearances and chibi stickers of that same character within the same section. Panel descriptions remain in the base section; they do not create additional character sections.
+Write the generated prompt on ONE line. Separate the base scene from individual character sections with a plain vertical bar "|", surrounded by spaces. Structure: base scene, page design and all panel descriptions | first character | second character. Each character section must contain that character's identity, visible appearance, current clothing, and panel-specific actions together. Use one section for each distinct visible character, including all repeat appearances and ${layout.chibiWord}s of that same character within the same section. Panel descriptions remain in the base section; they do not create additional character sections.
 
 Use ordinary text, punctuation, and spaces. The prompt string must contain no backslashes, line breaks, tabs, control characters, escape sequences, or technical serialization instructions. Return only the two output lines.
 
 BASE: PAGE AND ACTION
 
-Start with the gender counts for the distinct visible cast, followed by "manhwa, comic, vertical page, collage layout" and the panel count. Add a brief factual description of the setting, time of day and props mentioned in the POST. Then describe the page design and all panels in ordinary sentences. Names identify the cast here; full appearance and clothing descriptions belong in the individual character sections.
+Start with the gender counts for the distinct visible cast, followed by "${layout.baseTags}" and the panel count. Add a brief factual description of the setting, time of day and props mentioned in the POST. Then describe the page design and all panels in ordinary sentences. Names identify the cast here; full appearance and clothing descriptions belong in the individual character sections.
 
-PAGE DESIGN: The page background is light grid paper with a subtle paper texture, visible in the margins and gaps between panels. Panels have grey rounded panel frames with thin borders. Use 3–5 panels: ONE large "Main frame" with the key moment of the POST takes about half of the page or more; 2–4 smaller "Focus frame" panels show hands, eyes, lips, an object, a reaction, or the same moment from another angle. Vary the arrangement on every page: stacked panels, two panels side by side, a long thin horizontal strip squeezed between larger panels, an inset panel overlapping the corner of the Main frame. Keep narrow margins and gaps between panels so the grid paper and the decorations have room. For every panel, state its position, shape AND approximate size, for example "top half of the page" or "thin strip across the middle". The panel count in the base must equal the number of panels you describe. Chibi stickers are decorations, not panels.
+${layout.design}
 
 For conversation and close interaction, the "Main frame" should be a tight close-up or chest-up shot; faces and the relevant interaction fill most of the frame. Choose a specific camera for every panel (close-up, extreme close-up, upper body, from side, profile, from above, from below, from behind). Show close-ups of faces, expressions, hands, or already established physical contact. If an important action involves the lower body, use a localized detail panel for that action.
 
@@ -529,18 +567,11 @@ Describe only what is actually visible inside the selected crop. If only the upp
 
 Inside every panel, state who appears, their left or right position, expression, gaze direction, and already established action. Bind physical contact to the named participants and the relevant body part. Matching detail panels must preserve the same contact and clothing state.
 
-DECORATIONS
-
-Decorations take about 15–20% of the page. Place them only in the margins, corners, gaps between panels, or slightly overlapping a panel edge. They never cover faces, speech bubbles, or the key action. Describe them in the base section.
-
-- Chibi stickers: 1–2 small chibi super deformed sticker versions of visible named characters with a white die-cut sticker outline. Each sticker belongs to ONE named character and keeps exactly that character's hair, eye color and outfit colors. It shows a cute reaction that fits the moment: blushing, flustered, sulking, sleepy, eating or holding a prop from the scene. Animal-ear chibi only if it fits that character. Every other appearance of that character keeps normal adult proportions; do not add global chibi tags to the base scene or identity descriptions.
-- Small accents: pick 3–6 that fit the mood: pixel hearts, pixel stars, sparkles, four-pointed stars, small hand-drawn doodles, sweat drops, an anger vein, tiny props from the scene as stickers, a tiny heart or emoji icon in a small bubble.
-- Sound effects: at most 1–2 per page, and only for a real action or sensation in the POST (a heartbeat, a kiss, a hit, a ring, a fall, a gasp). Write them as short English onomatopoeia in bold comic lettering with a small burst shape behind it, placed in a margin or over a gutter, for example "THUMP". If nothing in the POST makes a sound, use none.
-- No other text: no captions, labels, name tags, ID cards, magazine typography or handwritten notes.
+${layout.extras}
 
 CHARACTERS IN THE SCENE
 
-Characters must behave visually as though no viewer, camera, photographer, or audience exists. They live inside the scene and must direct their attention only toward another character, an object, an event, or another meaningful point within the scene. Never describe a character as looking at the viewer, looking into the camera, facing the audience, making eye contact with the viewer, posing for the camera, acknowledging the camera, or breaking the fourth wall unless the RP explicitly establishes that exact behavior. Even when a face is shown frontally, the eyes must still be directed toward an in-scene person or object. For every visible character, give a scene-internal gaze target whenever practical. Chibi stickers may react freely.
+Characters must behave visually as though no viewer, camera, photographer, or audience exists. They live inside the scene and must direct their attention only toward another character, an object, an event, or another meaningful point within the scene. Never describe a character as looking at the viewer, looking into the camera, facing the audience, making eye contact with the viewer, posing for the camera, acknowledging the camera, or breaking the fourth wall unless the RP explicitly establishes that exact behavior. Even when a face is shown frontally, the eyes must still be directed toward an in-scene person or object. For every visible character, give a scene-internal gaze target whenever practical. Chibi may react freely.
 
 CHARACTER SECTIONS: IDENTITY AND CLOTHING
 
@@ -550,9 +581,9 @@ For a fandom character, use the recognized character tag when confidently known 
 
 For an original character, the name is only a reference label. Explicitly describe sex or presentation, face, eyes, hair color and length, build, distinctive marks and accessories, and current visible clothing. Do not assume the model knows the name or can see profile images. Do not assign an OC a fandom character tag merely because they look similar.
 
-Keep the SAME appearance for the same character in every panel and in their chibi sticker; change the outfit only if the story says it changed. Do not borrow another character's palette, hairstyle, accessories, or clothing motifs. Express required features positively rather than listing another character's unwanted features in the positive prompt.
+Keep the SAME appearance for the same character in every panel and in their ${layout.chibiWord}; change the outfit only if the story says it changed. Do not borrow another character's palette, hairstyle, accessories, or clothing motifs. Express required features positively rather than listing another character's unwanted features in the positive prompt.
 
-After identity and clothing, briefly state which "Main frame" or "Focus frame" panels and which chibi sticker show that character, together with the relevant position, expression, gaze target, and action. A repeated appearance of the same character does not create another identity section.
+After identity and clothing, briefly state which "Main frame" or "Focus frame" panels and which ${layout.chibiWord} show that character, together with the relevant position, expression, gaze target, and action. A repeated appearance of the same character does not create another identity section.
 
 ACTION TAGS
 
@@ -573,7 +604,7 @@ Use no more than three short verbatim Russian lines already spoken in the curren
 
 In the base panel description, name the visible speaker, identify the speech bubble and its tail, and place the exact printed line inside Russian guillemets: "NAME has a speech bubble saying «Реплика», with the tail pointing to NAME." Thoughts are allowed only when established internal speech exists and must use a thought bubble.
 
-At the very end of that speaker's OWN character section, add "Text:" followed by the same single line without quotation marks. Nothing else may follow it inside that character section. The next character begins after the plain vertical bar "|". Silent characters have no "Text:" entry. Do not add a global transcription or a second copy of the same bubble. Keep each dialogue line to no more than 8 words. Sound effects are not dialogue and never get a "Text:" entry.
+At the very end of that speaker's OWN character section, add "Text:" followed by the same single line without quotation marks. Nothing else may follow it inside that character section. The next character begins after the plain vertical bar "|". Silent characters have no "Text:" entry. Do not add a global transcription or a second copy of the same bubble. Keep each dialogue line to no more than 8 words. Sound effects, if any, are not dialogue and never get a "Text:" entry.
 
 NSFW AND EXPLICIT ADULT SEXUAL CONTENT
 
@@ -583,19 +614,21 @@ ${MANHWA_NSFW_TAIL}
 
 EXTERNAL STYLE
 
-Do not provide artists, years, quality tags, linework or rendering instructions, or a palette. The separately configured style controls all panels. Use only brief factual lighting when relevant. Grid paper, grey rounded panel frames, chibi stickers, small accents and sound effects are page design and composition, not style.
+Do not provide artists, years, quality tags, linework or rendering instructions, or a palette. The separately configured style controls all panels. Use only brief factual lighting when relevant. ${layout.styleNote}
 
 Do not insert technical escape syntax into the prompt. Output no Markdown, explanations, or placeholder labels.
 
-Before returning, silently check: ASPECT is portrait; the prompt is one line using ordinary spaces; plain vertical bars appear only between the base section and character sections; there is one section per person; only characters present in the moment appear; appearance and current clothing are assigned to the correct owners and stay the same in every panel and sticker; the page has grid paper, grey rounded frames and 3–5 panels with position, shape and size stated, and the panel count matches; chibi stickers number 1–2, each belongs to one named character, and are not counted as panels; there are at most 2 sound effects, each tied to a real action; decorations stay out of faces and the key action; every visible character has a scene-internal gaze target and does not look at the viewer or camera; every speaker has one matching line and "Text:" ends only that speaker's section; the output is exactly the two lines ASPECT and PROMPT.`;
+Before returning, silently check: ASPECT is portrait; the prompt is one line using ordinary spaces; plain vertical bars appear only between the base section and character sections; there is one section per person; only characters present in the moment appear; appearance and current clothing are assigned to the correct owners and stay the same in every panel and sticker; ${layout.check}; every visible character has a scene-internal gaze target and does not look at the viewer or camera; every speaker has one matching line and "Text:" ends only that speaker's section; the output is exactly the two lines ASPECT and PROMPT.`;
 }
 
 const NAI_V5_MANHWA_FOCUS_INSTRUCTION = buildManhwaInstruction(MANHWA_NSFW_FOCUS);
 const NAI_V5_MANHWA_XRAY_INSTRUCTION = buildManhwaInstruction(MANHWA_NSFW_XRAY);
+const NAI_V5_MANHWA_CLASSIC_FOCUS_INSTRUCTION = buildManhwaInstruction(MANHWA_NSFW_FOCUS, MANHWA_CLASSIC);
+const NAI_V5_MANHWA_CLASSIC_XRAY_INSTRUCTION = buildManhwaInstruction(MANHWA_NSFW_XRAY, MANHWA_CLASSIC);
 
 // Версия встроенных пресетов. Растёт, когда меняется текст встроенных
 // шаблонов: у тебя настройки уже сохранены, и без этого остался бы старый текст.
-const SEED_VERSION = 12;
+const SEED_VERSION = 13;
 
 // Встроенные пресеты прошлых версий. При обновлении убираются, если их
 // не правили (правленые копии — уже не встроенные и остаются).
@@ -692,8 +725,10 @@ const defaultSettings = Object.freeze({
         { id: 'nai-v5-comic', name: 'V5 — комикс', builtIn: true, instruction: NAI_V5_COMIC_INSTRUCTION },
         { id: 'nai-v5-comic-focus', name: 'V5 — комикс (крупно)', builtIn: true, instruction: NAI_V5_COMIC_FOCUS_INSTRUCTION },
         // lockAspect: рамка пресета, которую не перебивают ни рандом, ни «рамка по умолчанию».
-        { id: 'nai-v5-manhwa-focus', name: 'V5 — манхва (крупно)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_FOCUS_INSTRUCTION },
-        { id: 'nai-v5-manhwa-xray', name: 'V5 — манхва (икс-рей)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_XRAY_INSTRUCTION },
+        { id: 'nai-v5-manhwa-focus', name: 'V5 — манхва-коллаж (крупно)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_FOCUS_INSTRUCTION },
+        { id: 'nai-v5-manhwa-xray', name: 'V5 — манхва-коллаж (икс-рей)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_XRAY_INSTRUCTION },
+        { id: 'nai-v5-manhwa-classic-focus', name: 'V5 — манхва-классика (крупно)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_CLASSIC_FOCUS_INSTRUCTION },
+        { id: 'nai-v5-manhwa-classic-xray', name: 'V5 — манхва-классика (икс-рей)', builtIn: true, lockAspect: 'portrait', instruction: NAI_V5_MANHWA_CLASSIC_XRAY_INSTRUCTION },
     ],
 });
 
