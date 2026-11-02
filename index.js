@@ -525,6 +525,8 @@ const MANHWA_CLASSIC = {
 Include ONE chibi moment on most pages, in one of two forms:
 - a small "Chibi frame" panel of its own, where the characters of the moment appear as chibi super deformed versions with their own simple matching surroundings (for example both walking down the same hallway, or one curled up in a blanket with a cup of tea); it counts as a panel;
 - or a tiny rounded inset in a corner of another panel with ONE chibi character reacting (blushing, flustered, sulking, sipping tea, a tiny heart or flower above the head).
+A narrow Chibi frame shares its row or column with another panel; never leave empty white space beside it.
+Speech bubbles belong to full-size appearances only; a chibi inset or Chibi frame never carries dialogue, at most a tiny heart or emoji.
 Chibi keep exactly that character's hair, eye color and outfit colors. Every other appearance keeps normal adult proportions; do not add global chibi tags to the base scene or identity descriptions.
 
 NO DECORATIONS
@@ -532,7 +534,7 @@ NO DECORATIONS
 No stickers, grid paper, rounded grey frames, pixel hearts, sparkles, doodles, sound effects, captions, labels or other text. Speech bubbles are white ovals with a tail; thoughts use cloud-shaped thought bubbles. The only text on the page is in those bubbles.`,
     chibiWord: 'chibi appearance',
     styleNote: 'White page, straight black panel borders and chibi moments are page design and composition, not style.',
-    check: 'the page is white with straight black-bordered panels, narrow white gutters, no large empty areas and 2–4 panels with position, shape and size stated, and the panel count matches; there is at most one chibi moment, either its own Chibi frame counted as a panel or a tiny corner inset; there are no stickers, decorations or sound effects',
+    check: 'the page is white with straight black-bordered panels, narrow white gutters, no large empty areas and 2–4 panels with position, shape and size stated, and the panel count matches; there is at most one chibi moment, either its own Chibi frame counted as a panel or a tiny corner inset, with no empty space beside it and no dialogue in it; there are no stickers, decorations or sound effects',
 };
 
 function buildManhwaInstruction(nsfwVariant, layout = MANHWA_COLLAGE) {
@@ -628,7 +630,7 @@ const NAI_V5_MANHWA_CLASSIC_XRAY_INSTRUCTION = buildManhwaInstruction(MANHWA_NSF
 
 // Версия встроенных пресетов. Растёт, когда меняется текст встроенных
 // шаблонов: у тебя настройки уже сохранены, и без этого остался бы старый текст.
-const SEED_VERSION = 13;
+const SEED_VERSION = 14;
 
 // Встроенные пресеты прошлых версий. При обновлении убираются, если их
 // не правили (правленые копии — уже не встроенные и остаются).
