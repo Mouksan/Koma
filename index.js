@@ -3600,7 +3600,7 @@ function buildSettingsPanel() {
                             <i class="fa-solid fa-plus"></i><span>Новый стиль</span>
                         </div>
                         <div class="menu_button menu_button_icon" id="sdw_style_import">
-                            <i class="fa-solid fa-file-import"></i><span>Импорт из Фреймвивера</span>
+                            <i class="fa-solid fa-file-import"></i><span>Импорт из Frame</span>
                         </div>
                     </div>
                     <input type="file" id="sdw_style_import_file" accept="application/json,.json" hidden>
