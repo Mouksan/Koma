@@ -1,5 +1,6 @@
 /**
- * Sideweaver — «третье окно»: отдельная картинка к каждому ответу модели.
+ * Koma (бывший Sideweaver) — картинка NovelAI к ответам модели в отдельном окне.
+ * Внутренние имена (ключ настроек sideweaver, префикс sdw-) не меняются — так не слетают настройки и данные в чатах.
  *
  * Боковая модель пишет по посту промпт в данбору-тегах, NovelAI (через
  * наистеру) рисует, картинка показывается в плавающем окне, привязанном
@@ -42,7 +43,7 @@ const CATCH_TYPES = new Set([
     'group_chat',
 ]);
 
-const TOAST_TITLE = 'Sideweaver';
+const TOAST_TITLE = 'Koma';
 
 // Сколько символов поста и твоего сообщения отдаём модели.
 // Режем с начала, оставляя финал сцены.
@@ -599,7 +600,7 @@ const state = {
 
 function sdwLog(level, ...args) {
     if (level === 'INFO' && !getSettings().debug) return;
-    console.log(`[Sideweaver][${level}]`, ...args);
+    console.log(`[Koma][${level}]`, ...args);
 }
 
 /** Свободный id для пресета (из борда). */
@@ -2333,7 +2334,7 @@ function openPromptExpanded() {
     overlay.innerHTML = `
         <div class="sdw-popup sdw-expand-popup" role="dialog" aria-label="Промпт">
             <div class="sdw-popup-head">
-                <div class="sdw-popup-title">⊹ Промпт #${escapeHtml(String(messageId))} ⊹</div>
+                <div class="sdw-popup-title">「 Промпт #${escapeHtml(String(messageId))} 」</div>
                 <button class="sdw-popup-x" type="button" aria-label="Закрыть"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="sdw-expand-body">
@@ -2811,7 +2812,7 @@ function ensureLaunchers() {
                 bar.className = 'qr--button menu_button interactable sdw-launcher';
                 bar.tabIndex = 0;
                 bar.setAttribute('role', 'button');
-                bar.title = 'Sideweaver';
+                bar.title = 'Koma';
                 bar.innerHTML = '<span aria-hidden="true">🖼️</span>';
                 bar.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleWindowHidden(); });
                 bar.addEventListener('keydown', (e) => {
@@ -2848,7 +2849,7 @@ function buildFab() {
     const fab = document.createElement('div');
     fab.id = 'sdw_fab';
     fab.className = 'sdw-fab';
-    fab.title = 'Sideweaver';
+    fab.title = 'Koma';
     fab.setAttribute('role', 'button');
     fab.innerHTML = '<span aria-hidden="true">🖼️</span>';
     document.body.appendChild(fab);
@@ -2955,7 +2956,7 @@ function openPresetManager() {
     overlay.innerHTML = `
         <div class="sdw-popup sdw-presets" role="dialog" aria-label="Пресеты">
             <div class="sdw-popup-head">
-                <div class="sdw-popup-title">⊹ Пресеты ⊹</div>
+                <div class="sdw-popup-title">「 Пресеты 」</div>
                 <button class="sdw-popup-x" type="button" aria-label="Закрыть"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="sdw-presets-cols">
@@ -3230,12 +3231,12 @@ function buildSettingsPanel() {
     const html = `
         <div id="sdw_settings_root" class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b><i class="fa-solid fa-images" style="margin-right: 6px;"></i>⊹ SIDEWEAVER ⊹</b>
+                <b><i class="fa-solid fa-border-all" style="margin-right: 6px;"></i>「 KOMA 」</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
                 <div class="sdw-settings">
-                    <p class="sdw-intro">Третья картинка к каждому ответу модели — в отдельном окне. Промпт пишет боковая модель, рисует NovelAI через наистеру.</p>
+                    <p class="sdw-intro">Картинка к ответам модели — в отдельном окне. Промпт по посту пишет боковая модель, рисует NovelAI: напрямую по подписке или через наистеру.</p>
 
                     <label class="checkbox_label">
                         <input type="checkbox" id="sdw_enabled" ${settings.enabled ? 'checked' : ''}>
@@ -3819,7 +3820,7 @@ async function importStylesFromFile(file) {
     overlay.innerHTML = `
         <div class="sdw-popup sdw-import" role="dialog" aria-label="Импорт стилей">
             <div class="sdw-popup-head">
-                <div class="sdw-popup-title">⊹ Импорт стилей ⊹</div>
+                <div class="sdw-popup-title">「 Импорт стилей 」</div>
                 <button class="sdw-popup-x" type="button" aria-label="Закрыть"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="sdw-import-list">

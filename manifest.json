@@ -1,11 +1,11 @@
 {
-    "display_name": "Sideweaver",
+    "display_name": "Koma",
     "loading_order": 102,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "Mouksan",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "homePage": "https://github.com/Mouksan/Sideweaver"
 }
