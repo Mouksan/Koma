@@ -1709,6 +1709,93 @@ async function uploadImage(dataUrl, folder) {
 // ─── Рисование ───────────────────────────────────────────────────────────
 
 /**
+ * Рисует по готовому промпту и сохраняет файл на сервер. Ничего не знает про
+ * сообщения: им пользуются и окно (свайп), и свободная сцена. Бросает ошибку,
+ * если не вышло; AbortError — если отменили.
+ */
+async function generateImage(prompt, { aspect: rawAspect, aspectLocked = false, style = null, folder, signal, label = '', onRetry } = {}) {
+    const settings = getSettings();
+    const provider = settings.provider === 'novelai' ? 'novelai' : 'naistera';
+    const aspect = pickAspect(rawAspect, aspectLocked);
+    // Негатив стиля, если он заполнен, заменяет общий; пустой — идёт общий.
+    const styleNegative = String(style?.negative || '').trim();
+    const negative = styleNegative || String(settings.negativePrompt || '').trim();
+
+    // Стиль и дедупликация — только к основе; разделы персонажей идут как есть.
+    const rawSections = splitPromptSections(prompt);
+    const patterns = getStopWordPatterns();
+    const stopped = [];
+    const cleanBase = applyStopWords(rawSections.base, patterns);
+    stopped.push(...cleanBase.removed);
+    const sections = {
+        base: cleanBase.text,
+        chars: rawSections.chars.map((c) => {
+            const r = applyStopWords(c, patterns);
+            stopped.push(...r.removed);
+            return r.text;
+        }).filter(Boolean),
+    };
+    if (stopped.length) sdwLog('INFO', 'Вырезано стоп-словами:', stopped);
+    sdwLog('INFO', `Негатив (${styleNegative ? `стиль «${style.name}»` : 'общий'}):`, negative || '(пусто)');
+    const base = composeFinalPrompt(sections.base, style);
+    const finalPrompt = [base, ...sections.chars].join(' | ');
+
+    const naiModel = NAI_MODELS.some(m => m.id === settings.naiModel) ? settings.naiModel : NAI_MODELS[0].id;
+    const naiSize = NAI_SIZES[aspect] || NAI_SIZES.landscape;
+    const seed = Math.floor(Math.random() * 4294967295);
+    const ratio = provider === 'novelai'
+        ? `${naiSize.width}×${naiSize.height}`
+        : (settings.aspectMap[aspect] || defaultSettings.aspectMap[aspect]);
+
+    const body = { prompt: finalPrompt, aspect_ratio: ratio, model: NAISTERA_MODEL };
+    if (negative) body.negative_prompt = negative;
+
+    toastr.info('Рисую в NovelAI…', TOAST_TITLE, { timeOut: 2000 });
+    sdwLog('INFO', `Рисую ${label} (${provider}): рамка ${aspect} (${ratio}), стиль «${style?.name || 'нет'}»`, finalPrompt);
+
+    let route = 'naistera';
+    let imageUrl = null;
+    if (provider === 'novelai') {
+        const result = await requestNovelAi({
+            base, chars: sections.chars, negative, model: naiModel, fine: getEffectiveFine(style),
+            width: naiSize.width, height: naiSize.height, seed,
+        }, signal);
+        imageUrl = result.dataUrl;
+        route = result.route;
+    }
+    for (let attempt = 0; provider === 'naistera'; attempt++) {
+        try {
+            imageUrl = await requestNaistera(body, signal);
+            break;
+        } catch (error) {
+            const retryable = error?.name !== 'AbortError'
+                && (isRetryableStatus(error?.status) || error?.name === 'TypeError');
+            if (!retryable || attempt >= DRAW_RETRY_DELAYS.length) throw error;
+            sdwLog('WARN', `Наистера: ${error.message}, повтор через ${DRAW_RETRY_DELAYS[attempt] / 1000} с`);
+            onRetry?.(true);
+            await sleep(DRAW_RETRY_DELAYS[attempt], signal);
+            onRetry?.(false);
+        }
+    }
+    const dataUrl = await toDataUrl(imageUrl, signal);
+    const path = await uploadImage(dataUrl, folder);
+    if (provider === 'novelai') refreshNaiCharge();
+    return {
+        path,
+        prompt: finalPrompt,
+        styleName: style?.name || '',
+        aspect,
+        ratio,
+        provider,
+        model: provider === 'novelai' ? naiModel : NAISTERA_MODEL,
+        route,
+        seed: provider === 'novelai' ? seed : null,
+        stopCut: stopped.length,
+        createdAt: Date.now(),
+    };
+}
+
+/**
  * Рисует картинку по промпту свайпа. Повторный запуск для того же свайпа
  * отменяет прошлый. При смене чата не обрывается: файл сохраняется, а ссылка
  * ждёт в почтовом ящике, пока ты не вернёшься в этот чат.
@@ -1742,77 +1829,20 @@ async function runDraw(target) {
     const job = { controller: new AbortController(), cancelReason: null, retrying: false, target };
     state.drawJobs.set(target.key, job);
 
-    const style = getActiveStyle();
-    const aspect = pickAspect(data.aspect, !!data.aspectLocked);
-    const folder = getUploadFolderName();
-    // Негатив стиля, если он заполнен, заменяет общий; пустой — идёт общий.
-    const styleNegative = String(style?.negative || '').trim();
-    const negative = styleNegative || String(settings.negativePrompt || '').trim();
-
-    // Стиль и дедупликация — только к основе; разделы персонажей идут как есть.
-    const rawSections = splitPromptSections(data.prompt);
-    const patterns = getStopWordPatterns();
-    const stopped = [];
-    const cleanBase = applyStopWords(rawSections.base, patterns);
-    stopped.push(...cleanBase.removed);
-    const sections = {
-        base: cleanBase.text,
-        chars: rawSections.chars.map((c) => {
-            const r = applyStopWords(c, patterns);
-            stopped.push(...r.removed);
-            return r.text;
-        }).filter(Boolean),
-    };
-    if (stopped.length) sdwLog('INFO', 'Вырезано стоп-словами:', stopped);
-    sdwLog('INFO', `Негатив (${styleNegative ? `стиль «${style.name}»` : 'общий'}):`, negative || '(пусто)');
-    const base = composeFinalPrompt(sections.base, style);
-    const finalPrompt = [base, ...sections.chars].join(' | ');
-
-    const naiModel = NAI_MODELS.some(m => m.id === settings.naiModel) ? settings.naiModel : NAI_MODELS[0].id;
-    const naiSize = NAI_SIZES[aspect] || NAI_SIZES.landscape;
-    const seed = Math.floor(Math.random() * 4294967295);
-    const ratio = provider === 'novelai'
-        ? `${naiSize.width}×${naiSize.height}`
-        : (settings.aspectMap[aspect] || defaultSettings.aspectMap[aspect]);
-
-    const body = { prompt: finalPrompt, aspect_ratio: ratio, model: NAISTERA_MODEL };
-    if (negative) body.negative_prompt = negative;
-
     await writeSwipeData(target, { drawStatus: 'drawing', drawError: null, drawStartedAt: Date.now() });
-    toastr.info('Рисую в NovelAI…', TOAST_TITLE, { timeOut: 2000 });
-    sdwLog('INFO', `Рисую #${target.messageId} (${provider}): рамка ${aspect} (${ratio}), стиль «${style?.name || 'нет'}»`, finalPrompt);
 
-    let path = null;
+    let image = null;
     let failure = null;
-    let route = 'naistera';
     try {
-        let imageUrl = null;
-        if (provider === 'novelai') {
-            const result = await requestNovelAi({
-                base, chars: sections.chars, negative, model: naiModel, fine: getEffectiveFine(style),
-                width: naiSize.width, height: naiSize.height, seed,
-            }, job.controller.signal);
-            imageUrl = result.dataUrl;
-            route = result.route;
-        }
-        for (let attempt = 0; provider === 'naistera'; attempt++) {
-            try {
-                imageUrl = await requestNaistera(body, job.controller.signal);
-                break;
-            } catch (error) {
-                const retryable = error?.name !== 'AbortError'
-                    && (isRetryableStatus(error?.status) || error?.name === 'TypeError');
-                if (!retryable || attempt >= DRAW_RETRY_DELAYS.length) throw error;
-                sdwLog('WARN', `Наистера: ${error.message}, повтор через ${DRAW_RETRY_DELAYS[attempt] / 1000} с`);
-                job.retrying = true;
-                renderWindow();
-                await sleep(DRAW_RETRY_DELAYS[attempt], job.controller.signal);
-                job.retrying = false;
-                renderWindow();
-            }
-        }
-        const dataUrl = await toDataUrl(imageUrl, job.controller.signal);
-        path = await uploadImage(dataUrl, folder);
+        image = await generateImage(data.prompt, {
+            aspect: data.aspect,
+            aspectLocked: !!data.aspectLocked,
+            style: getActiveStyle(),
+            folder: getUploadFolderName(),
+            signal: job.controller.signal,
+            label: `#${target.messageId}`,
+            onRetry: (retrying) => { job.retrying = retrying; renderWindow(); },
+        });
     } catch (error) {
         failure = error;
     }
@@ -1834,22 +1864,6 @@ async function runDraw(target) {
         toastr.error(`${who} (${text.slice(0, 120)}). Промпт сохранён, жми 🎨`, TOAST_TITLE, { timeOut: 7000 });
         return;
     }
-
-    const image = {
-        path,
-        prompt: finalPrompt,
-        styleName: style?.name || '',
-        aspect,
-        ratio,
-        provider,
-        model: provider === 'novelai' ? naiModel : NAISTERA_MODEL,
-        route,
-        seed: provider === 'novelai' ? seed : null,
-        stopCut: stopped.length,
-        createdAt: Date.now(),
-    };
-
-    if (provider === 'novelai') refreshNaiCharge();
 
     if (getCurrentChatId() !== target.chatId) {
         getSettings().mailbox.push({ chatId: target.chatId, key: target.key, messageId: target.messageId, image });
