@@ -806,3 +806,43 @@ textarea.sdw-expand-text {
 
 /* Тонкая настройка NovelAI */
 .sdw-cat-note { margin: 4px 0 2px; }
+
+/* ==================== Свободная сцена ==================== */
+
+.sdw-free-popup { width: min(560px, 100%); }
+
+.sdw-free-body {
+    padding: 0 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sdw-free-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sdw-free-row select { flex: 1; min-width: 0; margin: 0; }
+
+.sdw-free-body .sdw-label { margin-top: 6px; }
+
+.sdw-free-wish { width: 100%; resize: vertical; margin: 0; }
+
+.sdw-free-status[hidden],
+.sdw-free-prompt[hidden] { display: none; }
+
+.sdw-free-body .sdw-image { max-height: 60vh; }
+
+.sdw-free-prompt summary {
+    cursor: pointer;
+    font-size: 0.85em;
+    opacity: 0.8;
+    padding: 2px 0 4px;
+}
+
+.sdw-free-prompt textarea { width: 100%; margin: 0; }
+
+.sdw-popup-btns .sdw-pbtn[hidden] { display: none; }

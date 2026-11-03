@@ -720,6 +720,8 @@ const defaultSettings = Object.freeze({
     // Картинки, дорисованные после ухода из чата: ждут возвращения в него.
     // { chatId, key, messageId, image }
     mailbox: [],
+    // Свободная сцена: последнее пожелание, пресет, стиль (null — как в окне), промпт и картинка.
+    freeScene: { wish: '', presetId: '', styleId: null, prompt: '', aspect: null, aspectLocked: false, image: null },
     debug: false,
     presets: [
         { id: 'nai', name: 'NovelAI', builtIn: true, instruction: NAI_INSTRUCTION },
@@ -738,6 +740,8 @@ const getContext = () => SillyTavern.getContext();
 
 // Состояние модуля.
 const state = {
+    // Свободная сцена: { controller, phase, retrying } пока идёт, { error } после ошибки, null — тишина.
+    freeJob: null,
     chatId: null,
     // Растёт на каждой смене чата. Долгие операции запоминают эпоху на
     // старте и не пишут в чужой чат.
@@ -2244,6 +2248,7 @@ function buildWindow() {
                     <span>Авто</span>
                 </label>
                 <div class="sdw-head-btns">
+                    <button type="button" class="sdw-icon" id="sdw_btn_free" title="Свободная сцена"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
                     <button type="button" class="sdw-icon" id="sdw_btn_tags" title="Персонажи этого чата"><i class="fa-solid fa-gear"></i></button>
                     <button type="button" class="sdw-icon" id="sdw_btn_collapse" title="Свернуть"><i class="fa-solid fa-chevron-down"></i></button>
                 </div>
@@ -2297,6 +2302,7 @@ function buildWindow() {
 
     document.getElementById('sdw_charge').addEventListener('click', () => refreshNaiCharge());
 
+    document.getElementById('sdw_btn_free').addEventListener('click', openFreeScene);
     document.getElementById('sdw_btn_tags').addEventListener('click', () => {
         state.tagsOpen = !state.tagsOpen;
         if (state.tagsOpen && getSettings().window.collapsed) setCollapsed(false);
@@ -2563,6 +2569,255 @@ function openPromptExpanded() {
     textarea.focus();
     textarea.setSelectionRange(0, 0);
     textarea.scrollTop = 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Свободная сцена: только пресет и пожелание, без чата
+// ═══════════════════════════════════════════════════════════════════════
+
+// Пресеты написаны под «нарисуй POST» — пожелание встаёт на его место.
+const FREE_SCENE_NOTE = `There is no roleplay chat. The SCENE REQUEST below replaces the POST: draw exactly this. The characters are canonical characters from a known franchise: use their recognized character tags and series tag, and their canonical appearance and outfit unless the request says otherwise. There is no character card, persona or previous prompt.`;
+
+// Папка на сервере для картинок свободных сцен — отдельно от персонажей.
+const FREE_SCENE_FOLDER = 'Koma — свободные';
+
+function getFreeScene() {
+    const settings = getSettings();
+    if (!settings.freeScene || typeof settings.freeScene !== 'object') settings.freeScene = {};
+    // Приводим в порядок тот же объект, а не копию: иначе правки потеряются.
+    const fs = settings.freeScene;
+    fs.wish = String(fs.wish || '');
+    fs.presetId = String(fs.presetId || '');
+    if (typeof fs.styleId !== 'string') fs.styleId = null;
+    fs.prompt = String(fs.prompt || '');
+    if (!ASPECTS.includes(fs.aspect)) fs.aspect = null;
+    fs.aspectLocked = !!fs.aspectLocked;
+    if (!fs.image?.path) fs.image = null;
+    return fs;
+}
+
+function getFreePreset() {
+    const settings = getSettings();
+    return settings.presets.find(p => p.id === getFreeScene().presetId) || getActivePreset();
+}
+
+function getFreeStyle() {
+    const settings = getSettings();
+    const id = getFreeScene().styleId;
+    const styleId = id === null ? settings.activeStyleId : id;
+    return settings.styles.find(s => s.id === styleId) || null;
+}
+
+/** Ключи провайдера рисования. false — нарисовать не выйдет, тост уже показан. */
+function checkDrawKeys() {
+    const settings = getSettings();
+    const provider = settings.provider === 'novelai' ? 'novelai' : 'naistera';
+    if (provider === 'naistera' && !String(settings.naisteraKey || '').trim()) {
+        toastr.warning('Не задан ключ наистеры', TOAST_TITLE, { timeOut: 3500 });
+        return false;
+    }
+    if (provider === 'novelai' && !String(settings.naiKey || '').trim()) {
+        toastr.warning('Не задан ключ NovelAI', TOAST_TITLE, { timeOut: 3500 });
+        return false;
+    }
+    return true;
+}
+
+/**
+ * ✨ / ✏️ — новый промпт по пожеланию и сразу картинка.
+ * 🎨 — только картинка по сохранённому промпту.
+ */
+async function runFreeScene({ reprompt }) {
+    const scene = getFreeScene();
+    const wish = scene.wish.trim();
+    if (reprompt && !wish) {
+        toastr.warning('Напиши, что нарисовать', TOAST_TITLE, { timeOut: 3000 });
+        return;
+    }
+    if (!reprompt && !scene.prompt) {
+        toastr.warning('Сначала нужен промпт — жми ✨', TOAST_TITLE, { timeOut: 3000 });
+        return;
+    }
+    if (!checkDrawKeys()) return;
+
+    state.freeJob?.controller.abort();
+    const job = { controller: new AbortController(), phase: reprompt ? 'prompt' : 'draw', retrying: false, error: null };
+    state.freeJob = job;
+    renderFreeScene();
+
+    try {
+        if (reprompt) {
+            const preset = getFreePreset();
+            toastr.info('Пишу промпт…', TOAST_TITLE, { timeOut: 2000 });
+            const instruction = substitute(preset.instruction || '');
+            const contextText = `${FREE_SCENE_NOTE}\n\nPOST (SCENE REQUEST):\n${wish}`;
+            sdwLog('INFO', `Свободная сцена: запрос, пресет «${preset.name}»`, { instruction, contextText });
+            const raw = await requestModel(instruction, contextText, job.controller.signal);
+            if (state.freeJob !== job) return;
+            sdwLog('INFO', 'Свободная сцена: сырой ответ:', raw);
+            const { aspect, prompt, refused } = parsePromptOutput(raw);
+            if (refused) throw new Error('Модель отказалась. Включи джейлбрейк или смени модель');
+            if (prompt.length < MIN_PROMPT_CHARS) throw new Error('Модель не вернула промпт. Попробуй ещё раз');
+            const locked = ASPECTS.includes(preset.lockAspect);
+            Object.assign(scene, { prompt, aspect: locked ? preset.lockAspect : aspect, aspectLocked: locked });
+            saveSettings();
+            job.phase = 'draw';
+            renderFreeScene();
+        }
+
+        const image = await generateImage(scene.prompt, {
+            aspect: scene.aspect,
+            aspectLocked: scene.aspectLocked,
+            style: getFreeStyle(),
+            folder: FREE_SCENE_FOLDER,
+            signal: job.controller.signal,
+            label: 'свободной сцены',
+            onRetry: (retrying) => { job.retrying = retrying; renderFreeScene(); },
+        });
+        if (state.freeJob !== job) return;
+        getFreeScene().image = image;
+        saveSettings();
+        toastr.success('Свободная сцена готова', TOAST_TITLE, { timeOut: 2500 });
+    } catch (error) {
+        if (state.freeJob !== job) return;
+        if (error?.name !== 'AbortError') {
+            sdwLog('WARN', 'Свободная сцена упала:', error);
+            job.error = String(error?.message || error);
+            toastr.error(job.error.slice(0, 160), TOAST_TITLE, { timeOut: 6000 });
+        }
+    }
+    if (state.freeJob === job) {
+        state.freeJob = job.error ? { error: job.error } : null;
+        renderFreeScene();
+    }
+}
+
+/** Обновляет окошко, если оно открыто. */
+function renderFreeScene() {
+    const overlay = document.getElementById('sdw_free_overlay');
+    if (!overlay) return;
+    const scene = getFreeScene();
+    const job = state.freeJob;
+    const busy = !!job?.controller;
+
+    const status = overlay.querySelector('.sdw-free-status');
+    if (busy) {
+        const what = job.phase === 'prompt' ? 'Пишу промпт…'
+            : (job.retrying ? 'Наистера занята, пробую ещё раз…' : 'Рисую в NovelAI…');
+        status.textContent = what;
+        status.hidden = false;
+    } else if (job?.error) {
+        status.textContent = `Не вышло: ${job.error}`;
+        status.hidden = false;
+    } else {
+        status.hidden = true;
+    }
+
+    const wrap = overlay.querySelector('#sdw_free_image_wrap');
+    const img = overlay.querySelector('#sdw_free_image');
+    if (scene.image?.path) {
+        if (img.getAttribute('src') !== scene.image.path) img.setAttribute('src', scene.image.path);
+        wrap.hidden = false;
+    } else {
+        wrap.hidden = true;
+    }
+
+    const promptBox = overlay.querySelector('.sdw-free-prompt');
+    promptBox.hidden = !scene.prompt;
+    const promptText = overlay.querySelector('.sdw-free-prompt-text');
+    if (document.activeElement !== promptText) promptText.value = scene.prompt;
+
+    const main = overlay.querySelector('[data-act="main"]');
+    main.textContent = scene.prompt ? '✏️ Новый промпт' : '✨ Нарисовать';
+    main.disabled = busy;
+    const redraw = overlay.querySelector('[data-act="redraw"]');
+    redraw.hidden = !scene.prompt;
+    redraw.disabled = busy;
+    overlay.querySelector('[data-act="cancel"]').hidden = !busy;
+}
+
+function openFreeScene() {
+    document.getElementById('sdw_free_overlay')?.remove();
+    const settings = getSettings();
+    const scene = getFreeScene();
+    const presetId = getFreePreset()?.id;
+    const styleId = getFreeStyle()?.id || '';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'sdw_free_overlay';
+    overlay.className = 'sdw-popup-ov';
+    overlay.innerHTML = `
+        <div class="sdw-popup sdw-free-popup" role="dialog" aria-label="Свободная сцена">
+            <div class="sdw-popup-head">
+                <div class="sdw-popup-title">「 Свободная сцена 」</div>
+                <button class="sdw-popup-x" type="button" aria-label="Закрыть"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="sdw-free-body">
+                <div class="sdw-free-row">
+                    <label class="sdw-style-label" for="sdw_free_preset">Пресет</label>
+                    <select id="sdw_free_preset" class="text_pole sdw-style-select">
+                        ${settings.presets.map(p => `<option value="${escapeHtml(p.id)}" ${p.id === presetId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="sdw-free-row">
+                    <label class="sdw-style-label" for="sdw_free_style">Стиль</label>
+                    <select id="sdw_free_style" class="text_pole sdw-style-select">
+                        ${[{ id: '', name: 'Без стиля' }, ...settings.styles].map(st => `<option value="${escapeHtml(st.id)}" ${st.id === styleId ? 'selected' : ''}>${escapeHtml(st.name || 'Без названия')}</option>`).join('')}
+                    </select>
+                </div>
+                <label class="sdw-label" for="sdw_free_wish">Что нарисовать</label>
+                <textarea id="sdw_free_wish" class="text_pole sdw-free-wish" rows="3" spellcheck="false" placeholder="например: поцелуй Джотаро и Какёина, JoJo's Bizarre Adventure, крыша школы на закате"></textarea>
+                <div class="sdw-status sdw-free-status" hidden></div>
+                <div class="sdw-image-wrap" id="sdw_free_image_wrap" hidden>
+                    <img class="sdw-image" id="sdw_free_image" alt="" title="Открыть в полный размер">
+                </div>
+                <details class="sdw-free-prompt" hidden>
+                    <summary>Промпт</summary>
+                    <textarea class="text_pole sdw-jb-text sdw-free-prompt-text" rows="5" spellcheck="false"></textarea>
+                    <div class="sdw-hint">Правки сохраняются сами; 🎨 рисует по этому тексту.</div>
+                </details>
+            </div>
+            <div class="sdw-popup-btns">
+                <button class="sdw-pbtn primary" data-act="main">✨ Нарисовать</button>
+                <button class="sdw-pbtn" data-act="redraw" hidden>🎨 Перерисовать</button>
+                <button class="sdw-pbtn ghost" data-act="cancel" hidden>Отменить</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const wish = overlay.querySelector('#sdw_free_wish');
+    wish.value = scene.wish;
+    wish.addEventListener('input', () => { getFreeScene().wish = wish.value; saveSettings(); });
+    overlay.querySelector('#sdw_free_preset').addEventListener('change', (e) => { getFreeScene().presetId = e.target.value; saveSettings(); });
+    overlay.querySelector('#sdw_free_style').addEventListener('change', (e) => { getFreeScene().styleId = e.target.value; saveSettings(); });
+    overlay.querySelector('.sdw-free-prompt-text').addEventListener('change', (e) => {
+        getFreeScene().prompt = flattenLine(e.target.value);
+        saveSettings();
+        renderFreeScene();
+    });
+    overlay.querySelector('#sdw_free_image').addEventListener('click', (e) => openLightbox(e.currentTarget.getAttribute('src')));
+    overlay.querySelector('[data-act="main"]').addEventListener('click', () => runFreeScene({ reprompt: true }));
+    overlay.querySelector('[data-act="redraw"]').addEventListener('click', () => runFreeScene({ reprompt: false }));
+    overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => {
+        state.freeJob?.controller?.abort();
+        state.freeJob = null;
+        renderFreeScene();
+    });
+
+    // Закрытие окошка работу не отменяет: картинка дорисуется и будет тут при следующем открытии.
+    const close = () => {
+        overlay.remove();
+        document.removeEventListener('keydown', onKey, true);
+    };
+    const onKey = (e) => {
+        if (e.key === 'Escape' && !document.getElementById('sdw_lightbox')) { e.stopPropagation(); close(); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    overlay.querySelector('.sdw-popup-x').addEventListener('click', close);
+    overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) close(); });
+
+    renderFreeScene();
+    if (!scene.wish) wish.focus();
 }
 
 // ─── Окно едет за прокруткой чата ────────────────────────────────────────
