@@ -2640,7 +2640,7 @@ async function runFreeScene({ reprompt }) {
     }
     if (!checkDrawKeys()) return;
 
-    state.freeJob?.controller.abort();
+    state.freeJob?.controller?.abort();
     const job = { controller: new AbortController(), phase: reprompt ? 'prompt' : 'draw', retrying: false, error: null };
     state.freeJob = job;
     renderFreeScene();
